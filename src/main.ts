@@ -14,12 +14,20 @@ async function boot(): Promise<void> {
   });
 
   playBtn.disabled = false;
-  playBtn.textContent = 'ENTRAR AL BOSQUE';
-  loadText.textContent = 'Listo para caminar';
+  playBtn.textContent = 'ENTRAR A LA ARENA';
+  loadText.textContent = 'Listo para jugar';
+
+  const btnP1 = document.getElementById('btn-p1');
+  btnP1?.addEventListener('click', () => {
+    btnP1.classList.add('active');
+    engine.setPlayer(1);
+  });
+  engine.setPlayer(1);
 
   const canvas = engine.renderer.domElement;
 
   playBtn.addEventListener('click', () => {
+    playBtn.blur();
     engine.startAudio();
     canvas.requestPointerLock();
   });
@@ -30,7 +38,7 @@ async function boot(): Promise<void> {
     overlay.classList.toggle('hidden', locked);
     document.body.classList.toggle('playing', locked);
     if (!locked) {
-      playBtn.textContent = 'VOLVER AL BOSQUE';
+      playBtn.textContent = 'CONTINUAR EN LA ARENA';
     }
   });
 

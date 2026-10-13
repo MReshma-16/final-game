@@ -150,15 +150,17 @@ export async function createTerrain(field: Heightfield): Promise<THREE.Mesh> {
         // para que color y relieve correspondan.
         vec3 stone = texture2D(uRockAlbedo, vNormalMapUv).rgb;
         float flatW = smoothstep(0.62, 0.25, slope);
-        // Transición firme pasto->tierra: evita piedras teñidas de verde.
-        float gDirtW = smoothstep(0.3, 0.72, 1.0 - gmask);
+        // Transición firme pasto->tierra con suelo orgánico realista
+        float gDirtW = smoothstep(0.18, 0.65, 1.0 - gmask);
         float gBumpMask = clamp(gDirtW * flatW * 1.5, 0.08, 1.0);
         // Relieve horneado (Rockwall.obj): hondonadas más oscuras.
         float gRelief = texture2D(uRelief, vNormalMapUv).r;
         vec3 bare = stone * (0.7 + 0.5 * n2);
         bare *= 0.72 + 0.46 * gRelief;
-        // Más oscuro y húmedo abajo; claro y polvoriento en el cerro.
-        bare *= mix(vec3(0.82, 0.74, 0.62), vec3(1.12, 1.04, 0.88), smoothstep(14.0, 36.0, vTWPos.y));
+        // Tono cálido y natural de tierra/suelo con guijarros
+        vec3 soilTint = vec3(0.52, 0.38, 0.25);
+        bare = mix(bare, bare * soilTint * 2.0, 0.5);
+        bare *= mix(vec3(0.85, 0.76, 0.64), vec3(1.12, 1.04, 0.88), smoothstep(14.0, 36.0, vTWPos.y));
         vec3 col = mix(gcol, bare, gDirtW * flatW);
 
         // Roca gris sólo en cortes casi verticales (cárcavas y taludes).

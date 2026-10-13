@@ -22,13 +22,29 @@ export class AudioSystem {
   private readonly lastPos = new THREE.Vector3();
   private firstFrame = true;
 
+  // Background Music
+  private bgm: HTMLAudioElement | null = null;
+  private isVictory = false;
+
   constructor(
     private readonly field: Heightfield,
     private readonly controller: FirstPersonController
-  ) {}
+  ) {
+    if (typeof window !== 'undefined') {
+      this.bgm = new Audio('/bgm.mp3');
+      this.bgm.loop = true;
+      this.bgm.volume = 0.55;
+    }
+  }
 
   /** Debe llamarse desde un gesto del usuario (clic) por la política de autoplay. */
   start(): void {
+    if (this.bgm && !this.isVictory) {
+      this.bgm.play().catch((err) => {
+        console.warn('BGM autoplay waiting for interaction:', err);
+      });
+    }
+
     if (this.ctx) {
       if (this.ctx.state === 'suspended') void this.ctx.resume();
       return;
@@ -72,10 +88,41 @@ export class AudioSystem {
 
   /** Silencia en el menú, restaura al jugar. */
   setMenu(inMenu: boolean): void {
+    if (this.bgm && !this.isVictory) {
+      if (inMenu) {
+        this.bgm.volume = 0.2;
+      } else {
+        this.bgm.volume = 0.55;
+        if (this.bgm.paused) {
+          this.bgm.play().catch(() => {});
+        }
+      }
+    }
+
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
     this.master.gain.cancelScheduledValues(t);
     this.master.gain.setTargetAtTime(inMenu ? 0.06 : 0.55, t, 0.4);
+  }
+
+  /** Se llama al alcanzar la meta final (Copa de la Victoria) */
+  stopBgm(fadeOutDuration = 2.5): void {
+    this.isVictory = true;
+    if (!this.bgm) return;
+    const startVol = this.bgm.volume;
+    const startTime = performance.now();
+    const fade = () => {
+      if (!this.bgm) return;
+      const elapsed = (performance.now() - startTime) / 1000;
+      if (elapsed < fadeOutDuration) {
+        this.bgm.volume = Math.max(0, startVol * (1 - elapsed / fadeOutDuration));
+        requestAnimationFrame(fade);
+      } else {
+        this.bgm.volume = 0;
+        this.bgm.pause();
+      }
+    };
+    fade();
   }
 
   update(dt: number, time: number): void {

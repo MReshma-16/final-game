@@ -6,53 +6,71 @@ export const WORLD_SIZE = 600;
 /** Resolución del campo de alturas (muestras por lado). */
 export const FIELD_RES = 512;
 
-/** Punto de aparición del jugador. */
-export const SPAWN = new THREE.Vector3(0, 0, 140);
+/** Puntos de aparición (distantes en el sur). */
+export const SPAWN = new THREE.Vector3(-60, 0.2, 90);
+export const SPAWN_P2 = new THREE.Vector3(60, 0.2, 90);
 
-/** Sendero de tierra que serpentea ladera arriba hasta la cumbre (polilínea en XZ). */
-const PATH: [number, number][] = [
-  [14, 210], [6, 170], [0, 140], [8, 105], [-6, 70],
-  [10, 30], [-4, -15], [-22, -60], [-38, -105],
-  [-48, -128], [-42, -146], [-58, -160], [-70, -170]
+/** Segmentos del sendero extendido (P1, P2 y corredor central sinuoso hacia el norte). */
+export const ARENA_PATHS: [number, number, number, number][] = [
+  // Player 1 Path (winding from south-west to door)
+  [-60, 90, -20, 90],
+  [-20, 90, -20, 35],
+  [-20, 35, -12, 35],
+  [-12, 35, -12, 10], // Door 1
+  [-12, 10, -12, -25],
+  [-12, -25, 0, -25],
+
+  // Player 2 Path (winding from south-east to door)
+  [60, 90, 20, 90],
+  [20, 90, 20, 35],
+  [20, 35, 12, 35],
+  [12, 35, 12, 10], // Door 2
+  [12, 10, 12, -25],
+  [12, -25, 0, -25],
+
+  // Central Long Forest Trail to the far Cup
+  [0, -25, 0, -85],
+  [0, -85, 10, -130],
+  [10, -130, -6, -175],
+  [-6, -175, 0, -220],
 ];
 
-/** Cumbre del cerro (torre de telecomunicaciones). */
-export const SUMMIT = { x: -70, z: -170 };
+/** Cumbre / Copa final (lejos en el norte). */
+export const SUMMIT = { x: 0, z: -220 };
 
 const HALF = WORLD_SIZE / 2;
 
 /** Altura analítica del terreno en metros. */
 export function terrainHeight(x: number, z: number): number {
-  // Pendiente base: la ladera sube hacia -Z (norte).
-  let h = (140 - z) * 0.055;
+  const pd = distToPath(x, z);
 
-  // Colinas amplias y ondulación media.
-  h += 10 * (fbm2(x * 0.004, z * 0.004, 4, 11) - 0.5) * 2;
-  h += 3.0 * (fbm2(x * 0.018, z * 0.018, 4, 23) - 0.5) * 2;
-  h += 0.5 * (fbm2(x * 0.09, z * 0.09, 3, 37) - 0.5) * 2;
+  // Colinas onduladas naturales del paisaje
+  let rawH = 8 * (fbm2(x * 0.007 + 12, z * 0.007 + 44, 4, 11) - 0.5) * 2;
+  rawH += 3.5 * (fbm2(x * 0.02, z * 0.02, 3, 23) - 0.5) * 2;
 
-  // Cerro principal: loma redondeada y herbosa (no pico alpino).
-  h += hill(x, z, SUMMIT.x, SUMMIT.z, 178, 62, 1.25);
-  // Hombro/estribación por donde sube el sendero (forma la cresta).
-  h += hill(x, z, -18, -118, 110, 28, 1.5);
-  // Loma menor a la derecha.
-  h += hill(x, z, 150, -95, 75, 16, 1.6);
-
-  // Casquete de la cumbre: garantiza que el Marcador corone el punto
-  // más alto del cerro.
-  const dsx = x - SUMMIT.x;
-  const dsz = z - SUMMIT.z;
-  const dSummit = Math.sqrt(dsx * dsx + dsz * dsz);
-  if (dSummit < 14) {
-    const t = 1 - dSummit / 14;
-    h += 4.2 * t * t * (3 - 2 * t);
+  // Gran cresta boscosa en el centro entre el inicio y el norte (bloquea la vista de la copa)
+  const centerRidge = Math.hypot(x, z - 25);
+  if (centerRidge < 50) {
+    const t = 1 - centerRidge / 50;
+    rawH += 8.5 * t * t * (3 - 2 * t);
   }
 
-  // Cordón de colinas boscosas de fondo en el borde del mundo.
-  const rr = Math.sqrt(x * x + z * z);
-  if (rr > 215) {
-    const t = Math.min(1, (rr - 215) / 80);
-    h += 26 * t * t * (3 - 2 * t) * (0.45 + 0.9 * fbm2(x * 0.007 + 9, z * 0.007 + 4, 3, 501));
+  // Otra loma entre el inicio y el corredor norte
+  const northRidge = Math.hypot(x, z + 60);
+  if (northRidge < 60) {
+    const t = 1 - northRidge / 60;
+    rawH += 6.5 * t * t * (3 - 2 * t);
+  }
+
+  // Aplanar el corredor del sendero para caminar suavemente sobre el suelo de tierra
+  const pathFlatten = smooth(2.0, 5.5, pd);
+  let h = Math.max(0, rawH) * pathFlatten;
+
+  // Cordón de montañas boscosas en el borde exterior
+  const r = Math.sqrt(x * x + z * z);
+  if (r > 215) {
+    const t = Math.min(1, (r - 215) / 80);
+    h += 24 * t * t * (3 - 2 * t);
   }
 
   return h;
@@ -64,20 +82,17 @@ function hill(x: number, z: number, cx: number, cz: number, radius: number, heig
   const d = Math.sqrt(dx * dx + dz * dz);
   if (d >= radius) return 0;
   const t = 1 - d / radius;
-  // Ondulación suave, sin crestas afiladas.
   const ridge = 0.9 + 0.5 * (fbm2(x * 0.012, z * 0.012, 3, 77) - 0.5);
   return height * Math.pow(t, sharp) * ridge;
 }
 
-function distToPath(x: number, z: number): number {
+export function distToPath(x: number, z: number): number {
   let best = Infinity;
-  for (let i = 0; i < PATH.length - 1; i++) {
-    const [ax, az] = PATH[i];
-    const [bx, bz] = PATH[i + 1];
+  for (const [ax, az, bx, bz] of ARENA_PATHS) {
     const abx = bx - ax;
     const abz = bz - az;
     const len2 = abx * abx + abz * abz;
-    let t = ((x - ax) * abx + (z - az) * abz) / len2;
+    let t = len2 > 0 ? ((x - ax) * abx + (z - az) * abz) / len2 : 0;
     t = Math.max(0, Math.min(1, t));
     const px = ax + abx * t;
     const pz = az + abz * t;
@@ -85,6 +100,11 @@ function distToPath(x: number, z: number): number {
     const dz = z - pz;
     const d = dx * dx + dz * dz;
     if (d < best) best = d;
+  }
+  // Plataforma de la copa
+  const dCup = Math.hypot(x - 0, z - (-220));
+  if (dCup < 6.0) {
+    return 0;
   }
   return Math.sqrt(best);
 }
@@ -136,14 +156,9 @@ export class Heightfield {
         const ero = smooth(0.64, 0.85, fbm2(x * 0.045 + 13, z * 0.045 + 71, 3, 313)) * smooth(16, 32, h);
         m *= 1 - 0.75 * ero;
 
-        // Sendero: angosto abajo, ancho y erosionado cuesta arriba.
-        const wide = smooth(18, 45, h) * 1.5;
+        // Sendero de tierra natural: despeja el pasto con transición suave y orgánica
         const pd = distToPath(x, z);
-        m *= smooth(0.7 + wide, 1.9 + wide * 2.2, pd);
-
-        // Explanada pisoteada alrededor de la torre en la cumbre.
-        const ds = Math.hypot(x - SUMMIT.x, z - SUMMIT.z);
-        m *= smooth(5, 10, ds);
+        m *= smooth(1.3, 2.2, pd);
 
         this.mask[i] = m;
       }

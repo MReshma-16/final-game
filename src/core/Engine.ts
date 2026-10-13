@@ -12,6 +12,11 @@ import { FirstPersonController } from '../player/FirstPersonController';
 import { createComposer } from '../fx/PostProcessing';
 import { AudioSystem } from '../audio/AudioSystem';
 import { shared } from './uniforms';
+import { ArenaMap, DOOR1_POS, DOOR2_POS, CUP_POS, P1_SPAWN, P2_SPAWN } from '../world/ArenaMap';
+import { ScrollQuizUI } from '../ui/ScrollQuiz';
+import { Minimap } from '../ui/Minimap';
+import { HandGestureController } from '../input/HandGestureController';
+import { SpeedBoostController } from '../ui/SpeedBoostController';
 
 type Progress = (fraction: number, label: string) => void;
 
@@ -43,6 +48,12 @@ export class Engine {
   private audio!: AudioSystem;
   private drone!: Drone;
   private forestUpdate!: (camPos: THREE.Vector3) => void;
+  private arenaMap!: ArenaMap;
+  private scrollQuiz!: ScrollQuizUI;
+  private minimap!: Minimap;
+  private handGesture?: HandGestureController;
+  private speedBoost!: SpeedBoostController;
+  selectedPlayer: 1 | 2 = 1;
   private readonly quality: QualityPreset;
 
   constructor(container: HTMLElement) {
@@ -99,17 +110,31 @@ export class Engine {
     const colliders = forest.colliders;
     this.forestUpdate = forest.update;
 
-    progress(0.85, 'Colocando rocas y troncos…');
+    progress(0.85, 'Construyendo senderos de piedra y puertas…');
     await tick();
     createRocks(this.field, this.scene, colliders);
     createLogs(this.field, this.scene, colliders);
     await createLandmarks(this.field, this.scene, colliders);
+
+    this.arenaMap = new ArenaMap(this.scene, colliders);
+    this.scrollQuiz = new ScrollQuizUI();
+    this.minimap = new Minimap();
     this.drone = new Drone(this.scene, this.field);
     this.motes = new Motes(this.scene);
 
     progress(0.93, 'Afinando la luz…');
     await tick();
-    this.controller = new FirstPersonController(this.camera, this.field, colliders, SPAWN);
+    const spawnPos = P1_SPAWN;
+    this.controller = new FirstPersonController(this.camera, this.field, colliders, spawnPos);
+    this.controller.teleport(spawnPos, -Math.PI / 2);
+    this.controller.arenaMap = this.arenaMap;
+    this.speedBoost = new SpeedBoostController(this.controller);
+    this.handGesture = new HandGestureController(
+      this.controller,
+      () => this.tryInteractDoor(),
+      this.scrollQuiz,
+      this.speedBoost
+    );
     this.audio = new AudioSystem(this.field, this.controller);
     this.composer = createComposer(this.renderer, this.scene, this.camera);
 
@@ -120,6 +145,14 @@ export class Engine {
     this.composer.render(0);
 
     progress(1, 'Listo');
+  }
+
+  setPlayer(player: 1 | 2): void {
+    this.selectedPlayer = player;
+    if (this.controller) {
+      const spawnPos = player === 1 ? P1_SPAWN : P2_SPAWN;
+      this.controller.teleport(spawnPos, player === 1 ? -Math.PI / 2 : Math.PI / 2);
+    }
   }
 
   setPlaying(playing: boolean): void {
@@ -142,15 +175,67 @@ export class Engine {
     const t = shared.uTime.value + dt;
     shared.uTime.value = t;
 
-    this.controller.update(dt);
+    // Solo mover con teclado si el pergamino de preguntas no está abierto
+    if (!this.scrollQuiz.isQuizActive) {
+      this.controller.update(dt);
+    }
+
     const p = this.controller.position;
     shared.uPlayer.value.set(p.x, p.z);
     this.sky.followPlayer(p);
     this.forestUpdate(p);
+    this.arenaMap.update(dt, t);
+    this.minimap.update(
+      p,
+      this.controller.rotationYaw,
+      this.arenaMap.isDoorUnlocked(1),
+      this.arenaMap.isDoorUnlocked(2)
+    );
     this.drone.update(dt, t, p);
     this.motes.update(t, p, this.field);
     this.audio.update(dt, t);
+    this.speedBoost.update(dt);
+
+    // Detección de proximidad: Puerta 1
+    if (!this.arenaMap.isDoorUnlocked(1) && !this.scrollQuiz.isQuizActive) {
+      const d1 = p.distanceTo(DOOR1_POS);
+      if (d1 < 3.4 && Math.abs(p.x - DOOR1_POS.x) < 2.0 && p.z > DOOR1_POS.z) {
+        document.exitPointerLock?.();
+        this.scrollQuiz.showQuiz(1, (doorId) => {
+          this.arenaMap.unlockDoor(doorId);
+          this.renderer.domElement.requestPointerLock?.();
+        });
+      }
+    }
+
+    // Detección de proximidad: Copa Final (Destino)
+    if (!this.arenaMap.isVictory) {
+      const dCup = p.distanceTo(CUP_POS);
+      if (dCup < 2.8) {
+        this.arenaMap.claimCup();
+        document.exitPointerLock?.();
+        this.scrollQuiz.showVictory();
+        this.audio.stopBgm();
+      }
+    }
 
     this.composer.render(dt);
+  }
+
+  private tryInteractDoor(): void {
+    if (this.scrollQuiz.isQuizActive) return;
+    const p = this.controller.position;
+    // Check Door 1 proximity (interaction radius 5m for Player 1)
+    if (!this.arenaMap.isDoorUnlocked(1)) {
+      const d1 = p.distanceTo(DOOR1_POS);
+      if (d1 < 5.0) {
+        document.exitPointerLock?.();
+        this.scrollQuiz.showQuiz(1, (doorId) => {
+          this.arenaMap.unlockDoor(doorId);
+          this.renderer.domElement.requestPointerLock?.();
+        });
+        return;
+      }
+    }
   }
 }

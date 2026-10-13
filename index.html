@@ -33,8 +33,35 @@
       margin-top: 0.8rem; font-size: 1rem; letter-spacing: 0.25em; text-indent: 0.25em;
       color: #9fb08a; font-style: italic;
     }
+    #player-select {
+      display: flex; gap: 1rem; margin-top: 1.8rem;
+    }
+    .player-btn {
+      padding: 0.65rem 1.6rem;
+      font: 0.82rem Georgia, serif; letter-spacing: 0.15em;
+      background: rgba(20, 30, 20, 0.6);
+      color: #b0c4a4; border: 1.5px solid rgba(140, 180, 120, 0.3);
+      border-radius: 4px; cursor: pointer; transition: all 0.25s;
+    }
+    .player-btn:hover {
+      background: rgba(40, 70, 40, 0.7);
+      border-color: rgba(180, 220, 150, 0.7);
+    }
+    .player-btn.active#btn-p1 {
+      background: rgba(31, 117, 254, 0.35);
+      border-color: #3b82f6;
+      color: #93c5fd;
+      box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);
+    }
+    .player-btn.active#btn-p2 {
+      background: rgba(217, 56, 30, 0.35);
+      border-color: #ef4444;
+      color: #fca5a5;
+      box-shadow: 0 0 15px rgba(239, 68, 68, 0.4);
+    }
+
     #play {
-      margin-top: 3rem; padding: 0.9rem 3.2rem;
+      margin-top: 1.5rem; padding: 0.9rem 3.2rem;
       font: 1rem Georgia, serif; letter-spacing: 0.2em; text-indent: 0.2em;
       color: #e8eede; background: rgba(60, 90, 40, 0.25);
       border: 1px solid rgba(180, 210, 140, 0.45); border-radius: 2px;
@@ -83,7 +110,10 @@
   <div id="crosshair"></div>
   <div id="overlay">
     <h1>THE FOREST</h1>
-    <p class="sub">un paseo por el bosque</p>
+    <p class="sub">ARENA TRIAL &middot; SOLVE GATES TO WIN THE CUP</p>
+    <div id="player-select">
+      <button type="button" class="player-btn active" id="btn-p1">PLAYER 1 (BLUE &middot; DOOR 1)</button>
+    </div>
     <button id="play" type="button" disabled>GENERANDO&hellip;</button>
     <div id="loadwrap">
       <div id="loadbar"><div id="loadfill"></div></div>
@@ -91,8 +121,8 @@
     </div>
     <div id="controls">
       <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> moverse</span>
+      <span>Camina s&oacute;lo por senderos de piedra (no pasto)</span>
       <span><kbd>Shift</kbd> correr</span>
-      <span><kbd>Espacio</kbd> saltar</span>
       <span><kbd>Esc</kbd> men&uacute;</span>
     </div>
     <div id="credits">
