@@ -6,11 +6,11 @@ import { SpeedBoostController } from '../ui/SpeedBoostController';
 export type GestureType =
   | 'NONE'
   | 'OPEN_PALM'
-  | 'CLOSED_FIST'
+  | 'V_SIGN'
   | 'POINT_RIGHT'
   | 'POINT_LEFT'
-  | 'THUMBS_UP'
-  | 'TWO_FINGERS';
+  | 'CLOSED_FIST'
+  | 'THUMBS_UP';
 
 export class HandGestureController {
   private video!: HTMLVideoElement;
@@ -27,6 +27,11 @@ export class HandGestureController {
   private isProcessing = false;
   private lastVideoTime = -1;
   private lastFrameTime = -1;
+  private openPalmGraceTimer = 0;
+
+  // Single-trigger locks for attack gestures (require gesture release before triggering again)
+  private fistPunchArmed = true;
+  private kickArmed = true;
 
   // Calibration center
   private neutralCenterX = 0.5;
@@ -174,11 +179,51 @@ export class HandGestureController {
         border-color: #22c55e;
         color: #86efac;
       }
-      #webcam-guide {
+      #gesture-guide {
+        margin-top: 8px;
+        background: rgba(0, 0, 0, 0.45);
+        border: 1px solid rgba(182, 146, 78, 0.45);
+        border-radius: 8px;
+        padding: 6px 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        font-size: 10px;
+        font-family: Georgia, serif;
+      }
+      .guide-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 3px 6px;
+        border-radius: 4px;
+        color: #94a3b8;
+        transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
+      }
+      .guide-row .g-label {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-weight: bold;
+        color: #cbd5e1;
+      }
+      .guide-row .g-action {
         font-size: 9px;
-        color: #8ca37d;
-        margin-top: 6px;
-        line-height: 1.35;
+        color: #fbbf24;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+      .guide-row.active {
+        background: rgba(34, 197, 94, 0.25);
+        border: 1px solid rgba(34, 197, 94, 0.65);
+        transform: scale(1.02);
+      }
+      .guide-row.active .g-label {
+        color: #ffffff;
+      }
+      .guide-row.active .g-action {
+        color: #86efac;
+        font-weight: bold;
       }
     `;
     document.head.appendChild(style);
@@ -203,10 +248,31 @@ export class HandGestureController {
         <button id="webcam-toggle-btn" class="webcam-btn">START CAM</button>
         <button id="webcam-calib-btn" class="webcam-btn">CALIBRATE</button>
       </div>
-      <div id="webcam-guide">
-        ✋ Open Palm: Forward &middot; ✊ Fist: Stop<br>
-        👉 Point Right: Turn Right &middot; 👈 Point Left: Turn Left<br>
-        👍 Thumb: Jump &middot; ✌️ 2 Fingers: Door Interact
+      <div id="gesture-guide">
+        <div class="guide-row" data-gesture="OPEN_PALM">
+          <span class="g-label">✋ Open Palm</span>
+          <span class="g-action">Run Forward</span>
+        </div>
+        <div class="guide-row" data-gesture="V_SIGN">
+          <span class="g-label">✌️ V Sign</span>
+          <span class="g-action">Stop Running</span>
+        </div>
+        <div class="guide-row" data-gesture="POINT_RIGHT">
+          <span class="g-label">👉 Point Right</span>
+          <span class="g-action">Move Right</span>
+        </div>
+        <div class="guide-row" data-gesture="POINT_LEFT">
+          <span class="g-label">👈 Point Left</span>
+          <span class="g-action">Move Left</span>
+        </div>
+        <div class="guide-row" data-gesture="CLOSED_FIST">
+          <span class="g-label">✊ Closed Fist</span>
+          <span class="g-action">Punch Combo</span>
+        </div>
+        <div class="guide-row" data-gesture="THUMBS_UP">
+          <span class="g-label">👍 Thumbs Up</span>
+          <span class="g-action">MMA Kick</span>
+        </div>
       </div>
     `;
 
@@ -318,9 +384,15 @@ export class HandGestureController {
 
     // Reset controller gesture inputs
     this.controller.gestureForward = false;
+    this.controller.gestureMoveLeft = false;
+    this.controller.gestureMoveRight = false;
     this.controller.gestureTurnLeft = false;
     this.controller.gestureTurnRight = false;
     this.activeGesture = 'NONE';
+    this.openPalmGraceTimer = 0;
+    this.fistPunchArmed = true;
+    this.kickArmed = true;
+    this.updateGuideHighlight('NONE');
 
     // Clear canvas
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
@@ -355,11 +427,17 @@ export class HandGestureController {
       }
       // Hand out of frame -> Stop gesture movement safely
       this.controller.gestureForward = false;
+      this.controller.gestureMoveLeft = false;
+      this.controller.gestureMoveRight = false;
       this.controller.gestureTurnLeft = false;
       this.controller.gestureTurnRight = false;
+      this.openPalmGraceTimer = 0;
+      this.fistPunchArmed = true;
+      this.kickArmed = true;
       if (this.activeGesture !== 'NONE') {
         this.activeGesture = 'NONE';
         this.gestureBadge.textContent = '✋ Show hand in camera';
+        this.updateGuideHighlight('NONE');
       }
       return;
     }
@@ -419,7 +497,7 @@ export class HandGestureController {
 
     // Classify Gesture for exploration gameplay
     const gesture = this.classifyGesture(lm);
-    this.applyGesture(gesture);
+    this.applyGesture(gesture, dt);
   }
 
   private drawSkeleton(lm: Array<{ x: number; y: number; z: number }>, w: number, h: number): void {
@@ -475,118 +553,154 @@ export class HandGestureController {
     const dist = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y);
 
     // Finger extension checks:
-    // A finger is considered extended if the tip is substantially farther from the wrist than the PIP joint
-    // and farther from its base MCP knuckle.
     const thumbExt = dist(lm[4], wrist) > dist(lm[2], wrist) * 1.15;
-    const indexExt = dist(lm[8], wrist) > dist(lm[6], wrist) * 1.18 && dist(lm[8], lm[5]) > 0.09;
-    const middleExt = dist(lm[12], wrist) > dist(lm[10], wrist) * 1.18 && dist(lm[12], lm[9]) > 0.09;
-    const ringExt = dist(lm[16], wrist) > dist(lm[14], wrist) * 1.18 && dist(lm[16], lm[13]) > 0.09;
-    const pinkyExt = dist(lm[20], wrist) > dist(lm[18], wrist) * 1.18 && dist(lm[20], lm[17]) > 0.09;
+    const indexExt = dist(lm[8], wrist) > dist(lm[6], wrist) * 1.18 && dist(lm[8], lm[5]) > 0.088;
+    const middleExt = dist(lm[12], wrist) > dist(lm[10], wrist) * 1.18 && dist(lm[12], lm[9]) > 0.088;
+    const ringExt = dist(lm[16], wrist) > dist(lm[14], wrist) * 1.18 && dist(lm[16], lm[13]) > 0.088;
+    const pinkyExt = dist(lm[20], wrist) > dist(lm[18], wrist) * 1.18 && dist(lm[20], lm[17]) > 0.088;
 
     // Vector calculation for index finger pointing in user-facing mirrored view:
-    // Raw camera sensor coordinates: x=0 (left) to x=1 (right).
-    // CSS applies transform: scaleX(-1) mirror effect.
-    // Screen X = 1 - raw camera X.
-    // Therefore, index vector pointing along mirrored screen X:
-    // screenTipX - screenBaseX = (1 - lm[8].x) - (1 - lm[5].x) = lm[5].x - lm[8].x.
-    // Positive screenIdxDx (> 0) means pointing towards screen RIGHT (user's physical right).
-    // Negative screenIdxDx (< 0) means pointing towards screen LEFT (user's physical left).
+    // Screen X: 1 - rawX
+    // Index vector: dx = lm[5].x - lm[8].x (positive = screen right, negative = screen left)
     const screenIdxDx = lm[5].x - lm[8].x;
     const screenIdxDy = lm[8].y - lm[5].y;
     const screenHandDx = lm[0].x - lm[8].x;
 
-    // 1. OPEN PALM (Move forward)
-    // All 4 main fingers extended
+    // 1. OPEN PALM — Run (All 4 main fingers extended facing webcam)
     if (indexExt && middleExt && ringExt && pinkyExt) {
-      return 'OPEN_PALM';
+      if (lm[8].y < lm[0].y + 0.12 && lm[12].y < lm[0].y + 0.12) {
+        return 'OPEN_PALM';
+      }
     }
 
-    // 2. TWO FINGERS (Door interact)
-    // Index and middle extended, ring and pinky curled
+    // 2. V SIGN — Stop Running (Index and middle extended and separated, other fingers curled)
     if (indexExt && middleExt && !ringExt && !pinkyExt) {
-      return 'TWO_FINGERS';
+      const vDistance = dist(lm[8], lm[12]);
+      const vUpward = lm[8].y < lm[6].y && lm[12].y < lm[10].y;
+      if (vDistance > 0.036 && vUpward) {
+        return 'V_SIGN';
+      }
     }
 
-    // 3. INDEX FINGER POINTING (Turn Right / Left)
-    // Index finger extended while middle, ring, pinky are folded/curled
+    // 3 & 4. INDEX FINGER POINTING — Move Right / Move Left
+    // Index finger extended while middle, ring, pinky are curled
     if (indexExt && !middleExt && !ringExt && !pinkyExt) {
-      const isHorizontal = Math.abs(screenIdxDx) > Math.abs(screenIdxDy) * 0.4 || Math.abs(screenHandDx) > 0.08;
+      // Horizontal threshold: angular tolerance to avoid diagonal or vertical pointing
+      const isHorizontal = Math.abs(screenIdxDx) > Math.abs(screenIdxDy) * 1.15;
       if (isHorizontal) {
-        if (screenIdxDx > 0.035 || screenHandDx > 0.06) {
-          return 'POINT_RIGHT'; // Hand points right -> Player turns right
+        if (screenIdxDx > 0.042 && screenHandDx > 0.038) {
+          return 'POINT_RIGHT'; // Move Right
         }
-        if (screenIdxDx < -0.035 || screenHandDx < -0.06) {
-          return 'POINT_LEFT';  // Hand points left -> Player turns left
+        if (screenIdxDx < -0.042 && screenHandDx < -0.038) {
+          return 'POINT_LEFT';  // Move Left
         }
       }
     }
 
-    // 4. CLOSED FIST (Stop all player movement and rotation)
-    // None of the main fingers extended
+    // 5. THUMBS UP — Kick (Thumb extended upward, four fingers curled)
+    if (thumbExt && lm[4].y < lm[3].y && lm[4].y < lm[5].y - 0.025 && !indexExt && !middleExt && !ringExt && !pinkyExt) {
+      return 'THUMBS_UP';
+    }
+
+    // 6. CLOSED FIST — Punch (All 4 main fingers curled, thumb not upward)
     if (!indexExt && !middleExt && !ringExt && !pinkyExt) {
-      // If thumb is pointing straight up, jump
-      if (thumbExt && lm[4].y < lm[3].y && lm[4].y < lm[5].y - 0.02) {
-        return 'THUMBS_UP';
-      }
       return 'CLOSED_FIST';
     }
 
     return 'NONE';
   }
 
-  private applyGesture(gesture: GestureType): void {
-    const now = performance.now();
+  private applyGesture(gesture: GestureType, dt: number): void {
+    // Re-arm single triggers when hands change / reopen
+    if (gesture !== 'CLOSED_FIST') {
+      this.fistPunchArmed = true;
+    }
+    if (gesture !== 'THUMBS_UP') {
+      this.kickArmed = true;
+    }
 
-    // Reset base continuous movement states
-    this.controller.gestureForward = false;
-    this.controller.gestureTurnLeft = false;
-    this.controller.gestureTurnRight = false;
+    // Reset sideways gesture movement
+    this.controller.gestureMoveLeft = false;
+    this.controller.gestureMoveRight = false;
+
+    // 1. Open Palm running logic with grace period
+    if (gesture === 'OPEN_PALM') {
+      this.openPalmGraceTimer = 0.25;
+      this.controller.gestureForward = true;
+      this.gestureBadge.textContent = '✋ OPEN PALM: Running';
+    } else if (gesture === 'V_SIGN') {
+      // 2. V Sign: Stop running immediately and transition to idle
+      this.openPalmGraceTimer = 0;
+      this.controller.gestureForward = false;
+      this.controller.characterAnimation?.setMoving(false);
+      this.gestureBadge.textContent = '✌️ V SIGN: Stopped Running';
+    } else {
+      // Grace timer counts down, then stops forward run
+      if (this.openPalmGraceTimer > 0) {
+        this.openPalmGraceTimer -= dt;
+        this.controller.gestureForward = true;
+      } else {
+        this.controller.gestureForward = false;
+      }
+    }
 
     switch (gesture) {
       case 'OPEN_PALM':
-        this.controller.gestureForward = true;
-        this.gestureBadge.textContent = '✋ OPEN PALM: Moving Forward';
-        break;
-
-      case 'CLOSED_FIST':
-        this.controller.stopAllMovement();
-        this.gestureBadge.textContent = '✊ CLOSED FIST: Stopped';
+      case 'V_SIGN':
         break;
 
       case 'POINT_RIGHT':
-        this.controller.gestureTurnRight = true;
-        this.gestureBadge.textContent = '👉 POINT RIGHT: Turning Right';
+        // 3. Move Right relative to character facing direction
+        this.controller.gestureMoveRight = true;
+        this.gestureBadge.textContent = '👉 POINT RIGHT: Moving Right';
         break;
 
       case 'POINT_LEFT':
-        this.controller.gestureTurnLeft = true;
-        this.gestureBadge.textContent = '👈 POINT LEFT: Turning Left';
+        // 4. Move Left relative to character facing direction
+        this.controller.gestureMoveLeft = true;
+        this.gestureBadge.textContent = '👈 POINT LEFT: Moving Left';
         break;
 
-      case 'THUMBS_UP':
-        this.gestureBadge.textContent = '👍 THUMBS UP: Jump!';
-        // Jump with 850ms cooldown
-        if (!this.gestureCooldowns['jump'] || now - this.gestureCooldowns['jump'] > 850) {
-          this.gestureCooldowns['jump'] = now;
-          this.controller.triggerJump();
+      case 'CLOSED_FIST':
+        // 5. Closed Fist: Punch Combo only works when opponent is near!
+        if (!this.controller.canFight) {
+          this.gestureBadge.textContent = '✊ FIST: Opponent not in range (Get closer to fight)';
+        } else if (this.fistPunchArmed && !this.controller.characterAnimation?.isAttackPlaying) {
+          this.controller.triggerPunch();
+          this.fistPunchArmed = false;
+          this.gestureBadge.textContent = '✊ CLOSED FIST: Punch Combo!';
+        } else if (!this.fistPunchArmed) {
+          this.gestureBadge.textContent = '✊ FIST: (Open hand to punch again)';
         }
         break;
 
-      case 'TWO_FINGERS':
-        this.gestureBadge.textContent = '✌️ 2 FINGERS: Door Interact!';
-        // Interact with 1200ms cooldown
-        if (!this.gestureCooldowns['interact'] || now - this.gestureCooldowns['interact'] > 1200) {
-          this.gestureCooldowns['interact'] = now;
-          if (this.onInteract) this.onInteract();
+      case 'THUMBS_UP':
+        // 6. Thumbs Up: MMA Kick only works when opponent is near!
+        if (!this.controller.canFight) {
+          this.gestureBadge.textContent = '👍 THUMBS UP: Opponent not in range (Get closer to fight)';
+        } else if (this.kickArmed && !this.controller.characterAnimation?.isAttackPlaying) {
+          this.controller.triggerKick();
+          this.kickArmed = false;
+          this.gestureBadge.textContent = '👍 THUMBS UP: MMA Kick!';
+        } else if (!this.kickArmed) {
+          this.gestureBadge.textContent = '👍 THUMBS UP: (Release to kick again)';
         }
         break;
 
       case 'NONE':
       default:
-        // When gesture changes or relaxes, continuous movement/turning stops
         break;
     }
 
+    this.updateGuideHighlight(gesture);
     this.activeGesture = gesture;
+  }
+
+  private updateGuideHighlight(gesture: GestureType): void {
+    if (!this.container) return;
+    const rows = this.container.querySelectorAll<HTMLElement>('.guide-row');
+    rows.forEach((row) => {
+      row.classList.toggle('active', row.getAttribute('data-gesture') === gesture);
+    });
   }
 }

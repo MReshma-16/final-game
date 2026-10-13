@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Heightfield } from '../world/heightfield';
 import { Collider } from '../world/Trees';
 import { ArenaMap } from '../world/ArenaMap';
+import { CharacterAnimation } from './CharacterAnimation';
 
 const EYE_HEIGHT = 1.68;
 const WALK_SPEED = 4.0;
@@ -11,9 +12,9 @@ const JUMP_SPEED = 5.2;
 export const BOOST_MULTIPLIER = 2.0;
 
 /**
- * Controlador en primera persona: pointer lock + WASD, gravedad,
- * colisión con el terreno (muestreo del heightfield) y con árboles/rocas,
- * restricción estricta a senderos de piedra, sprint y head-bob sutil.
+ * Controlador en primera y tercera persona: pointer lock + WASD / gestos,
+ * cámara detrás del jugador para ver animaciones de carrera, patadas y combos,
+ * o primera persona clásica.
  */
 export class FirstPersonController {
   readonly position: THREE.Vector3;
@@ -24,6 +25,10 @@ export class FirstPersonController {
 
   /** Estado del acelerador de velocidad (multiplicador x2.0) */
   speedBoostActive = false;
+
+  /** Modo de cámara: tercera persona (por defecto, para ver el personaje) o primera persona */
+  isThirdPerson = true;
+  characterAnimation?: CharacterAnimation;
 
   private yaw = Math.PI; // mirando hacia -Z... (yaw 0 mira a -Z; PI mira a +Z)
   private pitch = 0;
@@ -48,6 +53,18 @@ export class FirstPersonController {
       if (e.code === 'Space') e.preventDefault();
       if (e.code === 'Enter' || e.code === 'NumpadEnter') {
         e.preventDefault();
+        return;
+      }
+      if (e.code === 'KeyV') {
+        this.toggleCameraView();
+        return;
+      }
+      if (e.code === 'KeyJ' || e.code === 'KeyP') {
+        this.triggerPunch();
+        return;
+      }
+      if (e.code === 'KeyK') {
+        this.triggerKick();
         return;
       }
       this.keys.add(e.code);
@@ -89,9 +106,10 @@ export class FirstPersonController {
     this.syncCamera(0);
   }
 
-<<<<<<< HEAD
   // Hand Gesture Inputs
   gestureForward = false;
+  gestureMoveLeft = false;
+  gestureMoveRight = false;
   gestureTurnLeft = false;
   gestureTurnRight = false;
   gestureJumpRequested = false;
@@ -103,26 +121,52 @@ export class FirstPersonController {
     }
   }
 
+  /** Provider to check if opponent is connected, visible, and in combat range */
+  getOpponentTarget?: () => { position: THREE.Vector3; isVisible: boolean } | null;
+  readonly COMBAT_RANGE = 4.0; // meters
+
+  get canFight(): boolean {
+    if (!this.getOpponentTarget) return false;
+    const opp = this.getOpponentTarget();
+    if (!opp || !opp.isVisible) return false;
+    return this.position.distanceTo(opp.position) <= this.COMBAT_RANGE;
+  }
+
+  triggerPunch(): void {
+    if (!this.canFight) return;
+    this.characterAnimation?.playPunch();
+  }
+
+  triggerKick(): void {
+    if (!this.canFight) return;
+    this.characterAnimation?.playKick();
+  }
+
+  toggleCameraView(): void {
+    this.isThirdPerson = !this.isThirdPerson;
+  }
+
   stopAllMovement(): void {
     this.velocity.x = 0;
     this.velocity.z = 0;
     this.gestureForward = false;
+    this.gestureMoveLeft = false;
+    this.gestureMoveRight = false;
     this.gestureTurnLeft = false;
     this.gestureTurnRight = false;
+    this.characterAnimation?.setMoving(false);
   }
 
-=======
->>>>>>> 4f6a39c1ad3cb03a28f935fc49405ac8999880bc
   update(dt: number): void {
     this.landingSpeed = 0;
 
-    // Gesture turning
+    // Gesture turning (if used)
     if (this.enabled) {
       if (this.gestureTurnLeft) {
-        this.yaw += 1.8 * dt; // Turn left
+        this.yaw += 1.8 * dt;
       }
       if (this.gestureTurnRight) {
-        this.yaw -= 1.8 * dt; // Turn right
+        this.yaw -= 1.8 * dt;
       }
     }
 
@@ -130,12 +174,15 @@ export class FirstPersonController {
     const forward = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     const right = new THREE.Vector3(-forward.z, 0, forward.x);
 
+    const isAttacking = this.characterAnimation?.isAttackPlaying ?? false;
     const input = new THREE.Vector3();
-    if (this.enabled) {
+
+    // Give attack animations priority over ordinary movement
+    if (this.enabled && !isAttacking) {
       if (this.keys.has('KeyW') || this.keys.has('ArrowUp') || this.gestureForward) input.add(forward);
       if (this.keys.has('KeyS') || this.keys.has('ArrowDown')) input.sub(forward);
-      if (this.keys.has('KeyD') || this.keys.has('ArrowRight')) input.add(right);
-      if (this.keys.has('KeyA') || this.keys.has('ArrowLeft')) input.sub(right);
+      if (this.keys.has('KeyD') || this.keys.has('ArrowRight') || this.gestureMoveRight) input.add(right);
+      if (this.keys.has('KeyA') || this.keys.has('ArrowLeft') || this.gestureMoveLeft) input.sub(right);
     }
 
     const sprinting = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight');
@@ -198,18 +245,43 @@ export class FirstPersonController {
     this.bobAmount = THREE.MathUtils.damp(this.bobAmount, target, 6, dt);
     this.bobTime += dt * (4.6 + hSpeed * 0.9);
 
+    // Actualizar animación del personaje (Mixamo)
+    const isMoving = hSpeed > 0.2 || (this.enabled && this.gestureForward);
+    const speedMult = this.speedBoostActive ? 1.6 : 1.0;
+    this.characterAnimation?.setMoving(isMoving, speedMult);
+    this.characterAnimation?.update(dt, this.position, this.yaw);
+
     this.syncCamera(dt);
   }
 
   private syncCamera(_dt: number): void {
-    const bobY = Math.sin(this.bobTime * 2) * 0.032 * this.bobAmount;
-    const bobX = Math.cos(this.bobTime) * 0.02 * this.bobAmount;
+    if (this.isThirdPerson) {
+      const dist = 2.5;
+      const heightOffset = 0.35;
+      const pitchCos = Math.cos(this.pitch);
 
-    this.camera.position.set(
-      this.position.x + bobX * Math.cos(this.yaw),
-      this.position.y + bobY,
-      this.position.z - bobX * Math.sin(this.yaw)
-    );
-    this.camera.quaternion.setFromEuler(new THREE.Euler(this.pitch, this.yaw, 0, 'YXZ'));
+      // Cámara en tercera persona detrás del personaje
+      const camX = this.position.x + Math.sin(this.yaw) * dist * pitchCos;
+      const camZ = this.position.z + Math.cos(this.yaw) * dist * pitchCos;
+      const camY = this.position.y + heightOffset + Math.sin(this.pitch) * dist * 0.5;
+
+      this.camera.position.set(camX, camY, camZ);
+      const targetLook = new THREE.Vector3(
+        this.position.x - Math.sin(this.yaw) * 2.0,
+        this.position.y - 0.1 - Math.sin(this.pitch) * 2.0,
+        this.position.z - Math.cos(this.yaw) * 2.0
+      );
+      this.camera.lookAt(targetLook);
+    } else {
+      const bobY = Math.sin(this.bobTime * 2) * 0.032 * this.bobAmount;
+      const bobX = Math.cos(this.bobTime) * 0.02 * this.bobAmount;
+
+      this.camera.position.set(
+        this.position.x + bobX * Math.cos(this.yaw),
+        this.position.y + bobY,
+        this.position.z - bobX * Math.sin(this.yaw)
+      );
+      this.camera.quaternion.setFromEuler(new THREE.Euler(this.pitch, this.yaw, 0, 'YXZ'));
+    }
   }
 }

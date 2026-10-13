@@ -15,11 +15,13 @@ import { shared } from './uniforms';
 import { ArenaMap, DOOR1_POS, DOOR2_POS, CUP_POS, P1_SPAWN, P2_SPAWN } from '../world/ArenaMap';
 import { ScrollQuizUI } from '../ui/ScrollQuiz';
 import { Minimap } from '../ui/Minimap';
-<<<<<<< HEAD
 import { HandGestureController } from '../input/HandGestureController';
 import { SpeedBoostController } from '../ui/SpeedBoostController';
-=======
->>>>>>> 4f6a39c1ad3cb03a28f935fc49405ac8999880bc
+import { CharacterAnimation } from '../player/CharacterAnimation';
+import { CombatHUD } from '../ui/CombatHUD';
+import { RemotePlayer } from '../player/RemotePlayer';
+import { NetworkClient, NetRole, WorldNetState } from '../net/NetworkClient';
+import { MultiplayerHUD } from '../ui/MultiplayerHUD';
 
 type Progress = (fraction: number, label: string) => void;
 
@@ -54,17 +56,26 @@ export class Engine {
   private arenaMap!: ArenaMap;
   private scrollQuiz!: ScrollQuizUI;
   private minimap!: Minimap;
-<<<<<<< HEAD
   private handGesture?: HandGestureController;
   private speedBoost!: SpeedBoostController;
-=======
->>>>>>> 4f6a39c1ad3cb03a28f935fc49405ac8999880bc
+  public characterAnimation!: CharacterAnimation;
+  public combatHud!: CombatHUD;
+  public remotePlayer!: RemotePlayer;
+  public networkClient!: NetworkClient;
+  public multiplayerHud!: MultiplayerHUD;
   selectedPlayer: 1 | 2 = 1;
   private readonly quality: QualityPreset;
 
   constructor(container: HTMLElement) {
     const q = new URLSearchParams(location.search).get('q') ?? 'med';
     this.quality = PRESETS[q] ?? PRESETS.med;
+
+    const pParam = new URLSearchParams(location.search).get('player') || new URLSearchParams(location.search).get('p');
+    if (pParam === '2') {
+      this.selectedPlayer = 2;
+    } else {
+      this.selectedPlayer = 1;
+    }
 
     this.renderer = new THREE.WebGLRenderer({
       antialias: false,
@@ -128,13 +139,44 @@ export class Engine {
     this.drone = new Drone(this.scene, this.field);
     this.motes = new Motes(this.scene);
 
-    progress(0.93, 'Afinando la luz…');
+    progress(0.92, 'Configurando conexión multijugador…');
     await tick();
-<<<<<<< HEAD
-    const spawnPos = P1_SPAWN;
+    this.multiplayerHud = new MultiplayerHUD();
+    this.networkClient = new NetworkClient();
+
+    const spawnPos = this.selectedPlayer === 1 ? P1_SPAWN : P2_SPAWN;
+    const spawnYaw = this.selectedPlayer === 1 ? -Math.PI / 2 : Math.PI / 2;
     this.controller = new FirstPersonController(this.camera, this.field, colliders, spawnPos);
-    this.controller.teleport(spawnPos, -Math.PI / 2);
+    this.controller.teleport(spawnPos, spawnYaw);
     this.controller.arenaMap = this.arenaMap;
+
+    progress(0.95, 'Equipando trajes tácticos de combate…');
+    await tick();
+    const localOutfit = this.selectedPlayer === 1 ? 'TACTICAL_FIGHTER' : 'FOREST_SURVIVOR';
+    this.characterAnimation = new CharacterAnimation(this.scene);
+    await this.characterAnimation.load(localOutfit);
+    this.controller.characterAnimation = this.characterAnimation;
+    this.combatHud = new CombatHUD(this.controller);
+
+    progress(0.97, 'Cargando jugador remoto en línea…');
+    await tick();
+    const oppOutfit = this.selectedPlayer === 1 ? 'FOREST_SURVIVOR' : 'TACTICAL_FIGHTER';
+    const oppSpawn = this.selectedPlayer === 1 ? P2_SPAWN : P1_SPAWN;
+    const oppYaw = this.selectedPlayer === 1 ? Math.PI / 2 : -Math.PI / 2;
+    this.remotePlayer = new RemotePlayer(this.scene);
+    await this.remotePlayer.load(oppOutfit, oppSpawn, oppYaw);
+
+    // Fighting actions (punch & kick) only work when opponent is near!
+    this.controller.getOpponentTarget = () => {
+      if (this.remotePlayer && this.remotePlayer.isVisible) {
+        return { position: this.remotePlayer.position, isVisible: this.remotePlayer.isVisible };
+      }
+      return null;
+    };
+
+    this.setupNetworking();
+    this.networkClient.connect();
+
     this.speedBoost = new SpeedBoostController(this.controller);
     this.handGesture = new HandGestureController(
       this.controller,
@@ -142,13 +184,13 @@ export class Engine {
       this.scrollQuiz,
       this.speedBoost
     );
-=======
-    const spawnPos = this.selectedPlayer === 1 ? P1_SPAWN : P2_SPAWN;
-    this.controller = new FirstPersonController(this.camera, this.field, colliders, spawnPos);
-    this.controller.teleport(spawnPos, this.selectedPlayer === 1 ? -Math.PI / 2 : Math.PI / 2);
-    this.controller.arenaMap = this.arenaMap;
->>>>>>> 4f6a39c1ad3cb03a28f935fc49405ac8999880bc
     this.audio = new AudioSystem(this.field, this.controller);
+    this.scrollQuiz.onVoiceStart = () => {
+      this.audio.setDucking(true);
+    };
+    this.scrollQuiz.onVoiceEnd = () => {
+      this.audio.setDucking(false);
+    };
     this.composer = createComposer(this.renderer, this.scene, this.camera);
 
     // Reparto inicial de LOD del bosque y precompilación de shaders.
@@ -160,12 +202,78 @@ export class Engine {
     progress(1, 'Listo');
   }
 
+  private setupNetworking(): void {
+    this.networkClient.onConnected = (role, _playerId, roomId, hasOpponent, worldState) => {
+      this.selectedPlayer = role;
+      const spawnPos = role === 1 ? P1_SPAWN : P2_SPAWN;
+      const spawnYaw = role === 1 ? -Math.PI / 2 : Math.PI / 2;
+      this.controller.teleport(spawnPos, spawnYaw);
+
+      this.characterAnimation?.setOutfit(role === 1 ? 'TACTICAL_FIGHTER' : 'FOREST_SURVIVOR');
+      this.remotePlayer?.setOutfit(role === 1 ? 'FOREST_SURVIVOR' : 'TACTICAL_FIGHTER');
+
+      this.multiplayerHud.setRoom(roomId);
+      this.multiplayerHud.setRole(role);
+      const oppRole = (role === 1 ? 2 : 1) as NetRole;
+      this.multiplayerHud.setOpponentStatus(hasOpponent, oppRole);
+
+      if (worldState.door1Unlocked) this.arenaMap.unlockDoor(1);
+      if (worldState.door2Unlocked) this.arenaMap.unlockDoor(2);
+      if (worldState.cupClaimed) this.arenaMap.claimCup();
+
+      this.remotePlayer.setVisible(hasOpponent);
+    };
+
+    this.networkClient.onOpponentJoined = (role) => {
+      this.remotePlayer.setVisible(true);
+      this.multiplayerHud.setOpponentStatus(true, role);
+      this.multiplayerHud.showNotification(`Opponent joined as Player ${role}!`, '#22c55e');
+    };
+
+    this.networkClient.onOpponentState = (state) => {
+      this.remotePlayer.applyNetState(state);
+    };
+
+    this.networkClient.onOpponentLeft = (role) => {
+      this.remotePlayer.setVisible(false);
+      this.multiplayerHud.setOpponentStatus(false);
+      this.multiplayerHud.showNotification(`Opponent Player ${role} disconnected.`, '#f97316');
+    };
+
+    this.networkClient.onDoorUnlocked = (doorId) => {
+      this.arenaMap.unlockDoor(doorId);
+      this.multiplayerHud.showNotification(`Door ${doorId} unlocked!`, '#22c55e');
+    };
+
+    this.networkClient.onVictory = (winnerRole) => {
+      if (!this.arenaMap.isVictory) {
+        this.arenaMap.claimCup();
+        document.exitPointerLock?.();
+        this.scrollQuiz.showVictory();
+        this.audio.stopBgm();
+        this.multiplayerHud.showNotification(`Player ${winnerRole} reached the victory cup!`, '#ffd700');
+      }
+    };
+
+    this.networkClient.onPingUpdate = (pingMs) => {
+      const oppRole = (this.selectedPlayer === 1 ? 2 : 1) as NetRole;
+      this.multiplayerHud.setOpponentStatus(this.networkClient.hasOpponent, oppRole, pingMs);
+    };
+
+    this.networkClient.onError = (msg) => {
+      this.multiplayerHud.showNotification(msg, '#ef4444');
+    };
+  }
+
   setPlayer(player: 1 | 2): void {
     this.selectedPlayer = player;
     if (this.controller) {
       const spawnPos = player === 1 ? P1_SPAWN : P2_SPAWN;
       this.controller.teleport(spawnPos, player === 1 ? -Math.PI / 2 : Math.PI / 2);
     }
+    this.characterAnimation?.setOutfit(player === 1 ? 'TACTICAL_FIGHTER' : 'FOREST_SURVIVOR');
+    this.remotePlayer?.setOutfit(player === 1 ? 'FOREST_SURVIVOR' : 'TACTICAL_FIGHTER');
+    this.multiplayerHud?.setRole(player);
   }
 
   setPlaying(playing: boolean): void {
@@ -198,59 +306,62 @@ export class Engine {
     this.sky.followPlayer(p);
     this.forestUpdate(p);
     this.arenaMap.update(dt, t);
+
+    // Synchronize local player state across WebSocket
+    if (this.networkClient.isConnected) {
+      this.networkClient.sendState({
+        x: p.x,
+        y: p.y,
+        z: p.z,
+        yaw: this.controller.rotationYaw,
+        action: this.characterAnimation.currentActionName,
+        speedMult: this.controller.speedBoostActive ? 2.0 : 1.0,
+        speedBoostActive: this.controller.speedBoostActive
+      });
+    }
+
+    // Update remote opponent and minimap
+    this.remotePlayer.update(dt);
     this.minimap.update(
       p,
       this.controller.rotationYaw,
       this.arenaMap.isDoorUnlocked(1),
-      this.arenaMap.isDoorUnlocked(2)
+      this.arenaMap.isDoorUnlocked(2),
+      this.selectedPlayer,
+      this.remotePlayer
     );
+
     this.drone.update(dt, t, p);
     this.motes.update(t, p, this.field);
     this.audio.update(dt, t);
     this.speedBoost.update(dt);
+    this.combatHud.update();
 
-    // Detección de proximidad: Puerta 1
-    if (!this.arenaMap.isDoorUnlocked(1) && !this.scrollQuiz.isQuizActive) {
+    // Detección de proximidad: Puerta 1 (Jugador 1)
+    if (this.selectedPlayer === 1 && !this.arenaMap.isDoorUnlocked(1) && !this.scrollQuiz.isQuizActive) {
       const d1 = p.distanceTo(DOOR1_POS);
       if (d1 < 3.4 && Math.abs(p.x - DOOR1_POS.x) < 2.0 && p.z > DOOR1_POS.z) {
         document.exitPointerLock?.();
+        this.audio.setQuizActive(true); // Background music stops during all 5 questions
         this.scrollQuiz.showQuiz(1, (doorId) => {
           this.arenaMap.unlockDoor(doorId);
+          this.networkClient.sendDoorUnlocked(doorId);
+          this.audio.setQuizActive(false); // AFTER opening the door ONLY the BGM plays!
           this.renderer.domElement.requestPointerLock?.();
         });
       }
     }
 
-    // Detección de proximidad: Copa Final (Destino)
-    if (!this.arenaMap.isVictory) {
-      const dCup = p.distanceTo(CUP_POS);
-      if (dCup < 2.8) {
-        this.arenaMap.claimCup();
-        document.exitPointerLock?.();
-        this.scrollQuiz.showVictory();
-        this.audio.stopBgm();
-      }
-    }
-
-    // Detección de proximidad: Puerta 1
-    if (!this.arenaMap.isDoorUnlocked(1) && !this.scrollQuiz.isQuizActive) {
-      const d1 = p.distanceTo(DOOR1_POS);
-      if (d1 < 3.4 && Math.abs(p.x - DOOR1_POS.x) < 2.0 && p.z > DOOR1_POS.z) {
-        document.exitPointerLock?.();
-        this.scrollQuiz.showQuiz(1, (doorId) => {
-          this.arenaMap.unlockDoor(doorId);
-          this.renderer.domElement.requestPointerLock?.();
-        });
-      }
-    }
-
-    // Detección de proximidad: Puerta 2
-    if (!this.arenaMap.isDoorUnlocked(2) && !this.scrollQuiz.isQuizActive) {
+    // Detección de proximidad: Puerta 2 (Jugador 2)
+    if (this.selectedPlayer === 2 && !this.arenaMap.isDoorUnlocked(2) && !this.scrollQuiz.isQuizActive) {
       const d2 = p.distanceTo(DOOR2_POS);
       if (d2 < 3.4 && Math.abs(p.x - DOOR2_POS.x) < 2.0 && p.z > DOOR2_POS.z) {
         document.exitPointerLock?.();
+        this.audio.setQuizActive(true); // Background music stops during all 5 questions
         this.scrollQuiz.showQuiz(2, (doorId) => {
           this.arenaMap.unlockDoor(doorId);
+          this.networkClient.sendDoorUnlocked(doorId);
+          this.audio.setQuizActive(false); // AFTER opening the door ONLY the BGM plays!
           this.renderer.domElement.requestPointerLock?.();
         });
       }
@@ -261,8 +372,10 @@ export class Engine {
       const dCup = p.distanceTo(CUP_POS);
       if (dCup < 2.8) {
         this.arenaMap.claimCup();
+        this.networkClient.sendVictory();
         document.exitPointerLock?.();
         this.scrollQuiz.showVictory();
+        this.audio.stopBgm();
       }
     }
 
@@ -272,16 +385,29 @@ export class Engine {
   private tryInteractDoor(): void {
     if (this.scrollQuiz.isQuizActive) return;
     const p = this.controller.position;
-    // Check Door 1 proximity (interaction radius 5m for Player 1)
-    if (!this.arenaMap.isDoorUnlocked(1)) {
+    if (this.selectedPlayer === 1 && !this.arenaMap.isDoorUnlocked(1)) {
       const d1 = p.distanceTo(DOOR1_POS);
       if (d1 < 5.0) {
         document.exitPointerLock?.();
+        this.audio.setQuizActive(true);
         this.scrollQuiz.showQuiz(1, (doorId) => {
           this.arenaMap.unlockDoor(doorId);
+          this.networkClient.sendDoorUnlocked(doorId);
+          this.audio.setQuizActive(false);
           this.renderer.domElement.requestPointerLock?.();
         });
-        return;
+      }
+    } else if (this.selectedPlayer === 2 && !this.arenaMap.isDoorUnlocked(2)) {
+      const d2 = p.distanceTo(DOOR2_POS);
+      if (d2 < 5.0) {
+        document.exitPointerLock?.();
+        this.audio.setQuizActive(true);
+        this.scrollQuiz.showQuiz(2, (doorId) => {
+          this.arenaMap.unlockDoor(doorId);
+          this.networkClient.sendDoorUnlocked(doorId);
+          this.audio.setQuizActive(false);
+          this.renderer.domElement.requestPointerLock?.();
+        });
       }
     }
   }

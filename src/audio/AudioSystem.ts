@@ -25,6 +25,7 @@ export class AudioSystem {
   // Background Music
   private bgm: HTMLAudioElement | null = null;
   private isVictory = false;
+  private quizActive = false;
 
   constructor(
     private readonly field: Heightfield,
@@ -39,7 +40,7 @@ export class AudioSystem {
 
   /** Debe llamarse desde un gesto del usuario (clic) por la política de autoplay. */
   start(): void {
-    if (this.bgm && !this.isVictory) {
+    if (this.bgm && !this.isVictory && !this.quizActive) {
       this.bgm.play().catch((err) => {
         console.warn('BGM autoplay waiting for interaction:', err);
       });
@@ -89,6 +90,11 @@ export class AudioSystem {
   /** Silencia en el menú, restaura al jugar. */
   setMenu(inMenu: boolean): void {
     if (this.bgm && !this.isVictory) {
+      if (this.quizActive) {
+        this.bgm.volume = 0;
+        this.bgm.pause();
+        return;
+      }
       if (inMenu) {
         this.bgm.volume = 0.2;
       } else {
@@ -103,6 +109,32 @@ export class AudioSystem {
     const t = this.ctx.currentTime;
     this.master.gain.cancelScheduledValues(t);
     this.master.gain.setTargetAtTime(inMenu ? 0.06 : 0.55, t, 0.4);
+  }
+
+  /**
+   * In the time period of asking all five questions, the background music will NOT play.
+   * Only after the opening of the door does the background music resume and play!
+   */
+  setQuizActive(active: boolean): void {
+    this.quizActive = active;
+    if (this.bgm && !this.isVictory) {
+      if (active) {
+        this.bgm.volume = 0;
+        this.bgm.pause();
+      } else {
+        this.bgm.volume = 0.55;
+        this.bgm.play().catch(() => {});
+      }
+    }
+  }
+
+  /** Mutes environmental audio while the question is being dictated so only the question voice plays */
+  setDucking(ducked: boolean): void {
+    if (this.ctx) {
+      const t = this.ctx.currentTime;
+      this.master.gain.cancelScheduledValues(t);
+      this.master.gain.setTargetAtTime(ducked ? 0.0 : 0.55, t, 0.1);
+    }
   }
 
   /** Se llama al alcanzar la meta final (Copa de la Victoria) */

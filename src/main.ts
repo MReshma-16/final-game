@@ -17,15 +17,8 @@ async function boot(): Promise<void> {
   playBtn.textContent = 'ENTRAR A LA ARENA';
   loadText.textContent = 'Listo para jugar';
 
-  const btnP1 = document.getElementById('btn-p1');
-<<<<<<< HEAD
-  btnP1?.addEventListener('click', () => {
-    btnP1.classList.add('active');
-    engine.setPlayer(1);
-  });
-  engine.setPlayer(1);
-=======
-  const btnP2 = document.getElementById('btn-p2');
+  const btnP1 = document.getElementById('btn-p1') as HTMLButtonElement | null;
+  const btnP2 = document.getElementById('btn-p2') as HTMLButtonElement | null;
 
   btnP1?.addEventListener('click', () => {
     btnP1.classList.add('active');
@@ -38,7 +31,15 @@ async function boot(): Promise<void> {
     btnP1?.classList.remove('active');
     engine.setPlayer(2);
   });
->>>>>>> 4f6a39c1ad3cb03a28f935fc49405ac8999880bc
+
+  // Sync UI button active state with engine's initial selectedPlayer
+  if (engine.selectedPlayer === 2) {
+    btnP2?.classList.add('active');
+    btnP1?.classList.remove('active');
+  } else {
+    btnP1?.classList.add('active');
+    btnP2?.classList.remove('active');
+  }
 
   const canvas = engine.renderer.domElement;
 
