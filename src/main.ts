@@ -14,8 +14,23 @@ async function boot(): Promise<void> {
   });
 
   playBtn.disabled = false;
-  playBtn.textContent = 'ENTRAR AL BOSQUE';
-  loadText.textContent = 'Listo para caminar';
+  playBtn.textContent = 'ENTRAR A LA ARENA';
+  loadText.textContent = 'Listo para jugar';
+
+  const btnP1 = document.getElementById('btn-p1');
+  const btnP2 = document.getElementById('btn-p2');
+
+  btnP1?.addEventListener('click', () => {
+    btnP1.classList.add('active');
+    btnP2?.classList.remove('active');
+    engine.setPlayer(1);
+  });
+
+  btnP2?.addEventListener('click', () => {
+    btnP2.classList.add('active');
+    btnP1?.classList.remove('active');
+    engine.setPlayer(2);
+  });
 
   const canvas = engine.renderer.domElement;
 
@@ -30,7 +45,7 @@ async function boot(): Promise<void> {
     overlay.classList.toggle('hidden', locked);
     document.body.classList.toggle('playing', locked);
     if (!locked) {
-      playBtn.textContent = 'VOLVER AL BOSQUE';
+      playBtn.textContent = 'CONTINUAR EN LA ARENA';
     }
   });
 

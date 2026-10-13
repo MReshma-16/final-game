@@ -1,0 +1,490 @@
+import * as THREE from 'three';
+import { Collider } from './Trees';
+
+export interface PathSegment {
+  a: THREE.Vector2;
+  b: THREE.Vector2;
+  doorRequired?: number; // 1 or 2
+}
+
+export const PATH_HALF_WIDTH = 1.65;
+export const P1_SPAWN = new THREE.Vector3(-60, 0.2, 90);
+export const P2_SPAWN = new THREE.Vector3(60, 0.2, 90);
+export const DOOR1_POS = new THREE.Vector3(-12, 0, 10);
+export const DOOR2_POS = new THREE.Vector3(12, 0, 10);
+export const CUP_POS = new THREE.Vector3(0, 1.8, -220);
+
+/** All segments composing the walkable pathways (long, extended trail). */
+export const ARENA_SEGMENTS: PathSegment[] = [
+  // Player 1 Path (winding from south-west to door)
+  { a: new THREE.Vector2(-60, 90), b: new THREE.Vector2(-20, 90) },
+  { a: new THREE.Vector2(-20, 90), b: new THREE.Vector2(-20, 35) },
+  { a: new THREE.Vector2(-20, 35), b: new THREE.Vector2(-12, 35) },
+  { a: new THREE.Vector2(-12, 35), b: new THREE.Vector2(-12, 10) }, // Up to Door 1
+  { a: new THREE.Vector2(-12, 10), b: new THREE.Vector2(-12, -25), doorRequired: 1 }, // Past Door 1
+  { a: new THREE.Vector2(-12, -25), b: new THREE.Vector2(0, -25), doorRequired: 1 }, // P1 to center
+
+  // Player 2 Path (winding from south-east to door)
+  { a: new THREE.Vector2(60, 90), b: new THREE.Vector2(20, 90) },
+  { a: new THREE.Vector2(20, 90), b: new THREE.Vector2(20, 35) },
+  { a: new THREE.Vector2(20, 35), b: new THREE.Vector2(12, 35) },
+  { a: new THREE.Vector2(12, 35), b: new THREE.Vector2(12, 10) }, // Up to Door 2
+  { a: new THREE.Vector2(12, 10), b: new THREE.Vector2(12, -25), doorRequired: 2 }, // Past Door 2
+  { a: new THREE.Vector2(12, -25), b: new THREE.Vector2(0, -25), doorRequired: 2 }, // P2 to center
+
+  // Central Long Forest Trail to the far Cup
+  { a: new THREE.Vector2(0, -25), b: new THREE.Vector2(0, -85) },
+  { a: new THREE.Vector2(0, -85), b: new THREE.Vector2(10, -130) },
+  { a: new THREE.Vector2(10, -130), b: new THREE.Vector2(-6, -175) },
+  { a: new THREE.Vector2(-6, -175), b: new THREE.Vector2(0, -220) },
+];
+
+export class ArenaMap {
+  readonly group = new THREE.Group();
+  private door1LeftWing!: THREE.Mesh;
+  private door1RightWing!: THREE.Mesh;
+  private door2LeftWing!: THREE.Mesh;
+  private door2RightWing!: THREE.Mesh;
+
+  private trophyMesh!: THREE.Group;
+  private trophyLight!: THREE.PointLight;
+
+  private door1Unlocked = false;
+  private door2Unlocked = false;
+  private door1OpenRatio = 0;
+  private door2OpenRatio = 0;
+
+  private cupClaimed = false;
+
+  constructor(scene: THREE.Scene, colliders: Collider[]) {
+    this.buildPaths();
+    this.buildGates(colliders);
+    this.buildPodiumAndCup(colliders);
+    scene.add(this.group);
+  }
+
+  isDoorUnlocked(doorId: number): boolean {
+    return doorId === 1 ? this.door1Unlocked : this.door2Unlocked;
+  }
+
+  unlockDoor(doorId: number): void {
+    if (doorId === 1) this.door1Unlocked = true;
+    if (doorId === 2) this.door2Unlocked = true;
+  }
+
+  get isVictory(): boolean {
+    return this.cupClaimed;
+  }
+
+  claimCup(): void {
+    this.cupClaimed = true;
+  }
+
+  getWalkSurfaceHeight(x: number, z: number, terrainY: number): number {
+    const dCup = Math.hypot(x - CUP_POS.x, z - CUP_POS.z);
+    if (dCup <= 4.5) {
+      return 1.4; // Top of dais platform
+    }
+    // Stairs leading to dais: x in [-2.1, 2.1], z in [-43, -37]
+    if (Math.abs(x - CUP_POS.x) <= 2.2 && z >= -44 && z <= -37) {
+      const t = (-37 - z) / 7.0; // 0 at bottom, 1 at top
+      return THREE.MathUtils.clamp(t * 1.4, 0, 1.4);
+    }
+    return terrainY;
+  }
+
+  /**
+   * Strictly clamps the player to the stone paths so they cannot walk or jump onto the grass.
+   */
+  clampPlayerToPath(pos: THREE.Vector3, playerRadius = 0.35): void {
+    // Check if player is on the final trophy platform
+    const dxTrophy = pos.x - CUP_POS.x;
+    const dzTrophy = pos.z - CUP_POS.z;
+    const distToTrophyPlatform = Math.sqrt(dxTrophy * dxTrophy + dzTrophy * dzTrophy);
+    if (distToTrophyPlatform <= 4.8) {
+      // Allowed on trophy platform!
+      if (distToTrophyPlatform > 4.5) {
+        const angle = Math.atan2(dzTrophy, dxTrophy);
+        pos.x = CUP_POS.x + Math.cos(angle) * 4.5;
+        pos.z = CUP_POS.z + Math.sin(angle) * 4.5;
+      }
+      return;
+    }
+
+    // Filter segments based on unlocked doors
+    const activeSegments = ARENA_SEGMENTS.filter((seg) => {
+      if (seg.doorRequired === 1 && !this.door1Unlocked) return false;
+      if (seg.doorRequired === 2 && !this.door2Unlocked) return false;
+      return true;
+    });
+
+    const p = new THREE.Vector2(pos.x, pos.z);
+    let bestDist = Infinity;
+    let bestProj = new THREE.Vector2();
+
+    for (const seg of activeSegments) {
+      const ab = seg.b.clone().sub(seg.a);
+      const lenSq = ab.lengthSq();
+      let t = 0;
+      if (lenSq > 0.0001) {
+        t = ab.dot(p.clone().sub(seg.a)) / lenSq;
+        t = Math.max(0, Math.min(1, t));
+      }
+      const proj = seg.a.clone().add(ab.multiplyScalar(t));
+      const d = p.distanceTo(proj);
+      if (d < bestDist) {
+        bestDist = d;
+        bestProj = proj;
+      }
+    }
+
+    const maxAllowedDist = PATH_HALF_WIDTH - playerRadius;
+    if (bestDist > maxAllowedDist && bestDist > 0.0001) {
+      // Clamp strictly back to the path edge!
+      const offset = p.clone().sub(bestProj).normalize().multiplyScalar(maxAllowedDist);
+      pos.x = bestProj.x + offset.x;
+      pos.z = bestProj.y + offset.y;
+    }
+
+    // Extra hard barrier at locked doors to prevent crossing gate line
+    if (!this.door1Unlocked && Math.abs(pos.x - DOOR1_POS.x) < 2.0) {
+      if (pos.z < DOOR1_POS.z + playerRadius) {
+        pos.z = DOOR1_POS.z + playerRadius;
+      }
+    }
+    if (!this.door2Unlocked && Math.abs(pos.x - DOOR2_POS.x) < 2.0) {
+      if (pos.z < DOOR2_POS.z + playerRadius) {
+        pos.z = DOOR2_POS.z + playerRadius;
+      }
+    }
+  }
+
+  update(dt: number, time: number): void {
+    // Animate Door 1 opening
+    if (this.door1Unlocked && this.door1OpenRatio < 1) {
+      this.door1OpenRatio = Math.min(1, this.door1OpenRatio + dt * 1.2);
+      const angle = this.door1OpenRatio * (Math.PI * 0.48);
+      this.door1LeftWing.rotation.y = -angle;
+      this.door1RightWing.rotation.y = angle;
+    }
+
+    // Animate Door 2 opening
+    if (this.door2Unlocked && this.door2OpenRatio < 1) {
+      this.door2OpenRatio = Math.min(1, this.door2OpenRatio + dt * 1.2);
+      const angle = this.door2OpenRatio * (Math.PI * 0.48);
+      this.door2LeftWing.rotation.y = -angle;
+      this.door2RightWing.rotation.y = angle;
+    }
+
+    // Animate Trophy floating and spinning
+    if (this.trophyMesh) {
+      this.trophyMesh.rotation.y += dt * 1.1;
+      this.trophyMesh.position.y = CUP_POS.y + Math.sin(time * 2.2) * 0.12;
+      this.trophyLight.intensity = 2.5 + Math.sin(time * 3.5) * 0.8;
+    }
+  }
+
+  private buildPaths(): void {
+    // Natural small border stones along the edges of the dirt trail
+    this.createTrailBorderStones();
+  }
+
+  /**
+   * Places natural small river stones/pebbles along the boundary of the dirt trail
+   * so the path is completely natural soil without any artificial cement.
+   */
+  private createTrailBorderStones(): void {
+    const stoneGeo = new THREE.DodecahedronGeometry(0.2, 1);
+    const stoneMat = new THREE.MeshStandardMaterial({
+      color: 0x5a554a,
+      roughness: 0.95,
+      metalness: 0.05
+    });
+
+    for (const seg of ARENA_SEGMENTS) {
+      const dir = seg.b.clone().sub(seg.a);
+      const len = dir.length();
+      if (len < 0.1) continue;
+
+      const norm = dir.clone().normalize();
+      const perp = new THREE.Vector2(-norm.y, norm.x);
+
+      // Place pebbles intermittently along the left & right borders
+      const step = 3.5;
+      const count = Math.floor(len / step);
+      for (let i = 0; i <= count; i++) {
+        const t = (i * step) / len;
+        const center = seg.a.clone().add(dir.clone().multiplyScalar(t));
+
+        // Random jitter for natural appearance
+        const jitter = (Math.sin(center.x * 3.7 + center.y * 2.3) + 1) * 0.15;
+
+        // Left stone
+        const leftPos = center.clone().add(perp.clone().multiplyScalar(PATH_HALF_WIDTH + 0.1 + jitter));
+        const stoneL = new THREE.Mesh(stoneGeo, stoneMat);
+        const sL = 0.7 + Math.abs(Math.sin(center.x * 5.1)) * 0.6;
+        stoneL.scale.set(sL, sL * 0.6, sL);
+        stoneL.position.set(leftPos.x, 0.04, leftPos.y);
+        stoneL.rotation.set(Math.sin(leftPos.x), Math.cos(leftPos.y), 0);
+        stoneL.receiveShadow = true;
+        this.group.add(stoneL);
+
+        // Right stone
+        const rightPos = center.clone().sub(perp.clone().multiplyScalar(PATH_HALF_WIDTH + 0.1 + jitter));
+        const stoneR = new THREE.Mesh(stoneGeo, stoneMat);
+        const sR = 0.7 + Math.abs(Math.cos(center.y * 4.3)) * 0.6;
+        stoneR.scale.set(sR, sR * 0.6, sR);
+        stoneR.position.set(rightPos.x, 0.04, rightPos.y);
+        stoneR.rotation.set(Math.cos(rightPos.x), Math.sin(rightPos.y), 0);
+        stoneR.receiveShadow = true;
+        this.group.add(stoneR);
+      }
+    }
+  }
+
+  private buildGates(colliders: Collider[]): void {
+    const timberMat = new THREE.MeshStandardMaterial({
+      color: 0x3d2817,
+      roughness: 0.88,
+      metalness: 0.05
+    });
+
+    const woodDoorMat = new THREE.MeshStandardMaterial({
+      color: 0x4a2e16,
+      roughness: 0.78,
+      metalness: 0.05
+    });
+
+    // DOOR 1 (Blue)
+    const d1 = this.createGateStructure(DOOR1_POS, 0x1f75fe, timberMat, woodDoorMat, colliders);
+    this.door1LeftWing = d1.left;
+    this.door1RightWing = d1.right;
+
+    // DOOR 2 (Red)
+    const d2 = this.createGateStructure(DOOR2_POS, 0xd9381e, timberMat, woodDoorMat, colliders);
+    this.door2LeftWing = d2.left;
+    this.door2RightWing = d2.right;
+  }
+
+  private createGateStructure(
+    pos: THREE.Vector3,
+    bannerColor: number,
+    timberMat: THREE.Material,
+    woodMat: THREE.Material,
+    colliders: Collider[]
+  ): { left: THREE.Mesh; right: THREE.Mesh } {
+    const gateGroup = new THREE.Group();
+    gateGroup.position.copy(pos);
+
+    // Left Timber Post
+    const pillarGeo = new THREE.CylinderGeometry(0.38, 0.44, 4.2, 16);
+    const leftPillar = new THREE.Mesh(pillarGeo, timberMat);
+    leftPillar.position.set(-1.8, 2.1, 0);
+    leftPillar.castShadow = true;
+    leftPillar.receiveShadow = true;
+    gateGroup.add(leftPillar);
+    colliders.push({ x: pos.x - 1.8, z: pos.z, r: 0.5 });
+
+    // Right Timber Post
+    const rightPillar = new THREE.Mesh(pillarGeo, timberMat);
+    rightPillar.position.set(1.8, 2.1, 0);
+    rightPillar.castShadow = true;
+    rightPillar.receiveShadow = true;
+    gateGroup.add(rightPillar);
+    colliders.push({ x: pos.x + 1.8, z: pos.z, r: 0.5 });
+
+    // Timber Top Crossbeam Lintel
+    const lintelGeo = new THREE.CylinderGeometry(0.32, 0.36, 4.4, 16);
+    lintelGeo.rotateZ(Math.PI / 2);
+    const lintel = new THREE.Mesh(lintelGeo, timberMat);
+    lintel.position.set(0, 4.1, 0);
+    lintel.castShadow = true;
+    gateGroup.add(lintel);
+
+    // Banner "5 RAPID FIRE QUESTIONS"
+    const bannerGeo = new THREE.PlaneGeometry(3.2, 0.9);
+    const bannerCanvas = document.createElement('canvas');
+    bannerCanvas.width = 512;
+    bannerCanvas.height = 144;
+    const ctx = bannerCanvas.getContext('2d')!;
+    ctx.fillStyle = bannerColor === 0x1f75fe ? '#103460' : '#601515';
+    ctx.fillRect(0, 0, 512, 144);
+    ctx.strokeStyle = '#ecd089';
+    ctx.lineWidth = 8;
+    ctx.strokeRect(6, 6, 500, 132);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 36px Georgia, serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('5 RAPID FIRE QUESTIONS', 256, 68);
+    ctx.font = 'italic 24px Georgia, serif';
+    ctx.fillStyle = '#ecd089';
+    ctx.fillText('SOLVE TO UNLOCK GATE', 256, 110);
+
+    const bannerTex = new THREE.CanvasTexture(bannerCanvas);
+    const bannerMat = new THREE.MeshBasicMaterial({ map: bannerTex });
+    const bannerMesh = new THREE.Mesh(bannerGeo, bannerMat);
+    bannerMesh.position.set(0, 3.3, 0.45);
+    gateGroup.add(bannerMesh);
+
+    // Lanterns on pillars
+    this.addLantern(gateGroup, new THREE.Vector3(-1.8, 2.6, 0.5));
+    this.addLantern(gateGroup, new THREE.Vector3(1.8, 2.6, 0.5));
+
+    // Wooden Doors (2 Wings)
+    const doorWingGeo = new THREE.BoxGeometry(1.35, 3.2, 0.16);
+    doorWingGeo.translate(0.675, 0, 0); // Pivot at hinge
+
+    const leftHinge = new THREE.Group();
+    leftHinge.position.set(-1.35, 1.6, 0);
+    const leftDoor = new THREE.Mesh(doorWingGeo, woodMat);
+    leftDoor.castShadow = true;
+    leftHinge.add(leftDoor);
+    gateGroup.add(leftHinge);
+
+    const rightHinge = new THREE.Group();
+    rightHinge.position.set(1.35, 1.6, 0);
+    doorWingGeo.clone(); // Re-use
+    const rightWingGeo = new THREE.BoxGeometry(1.35, 3.2, 0.16);
+    rightWingGeo.translate(-0.675, 0, 0); // Pivot at hinge
+    const rightDoor = new THREE.Mesh(rightWingGeo, woodMat);
+    rightDoor.castShadow = true;
+    rightHinge.add(rightDoor);
+    gateGroup.add(rightHinge);
+
+    this.group.add(gateGroup);
+
+    return { left: leftDoor, right: rightDoor };
+  }
+
+  private addLantern(parent: THREE.Group, pos: THREE.Vector3): void {
+    const lampGeo = new THREE.BoxGeometry(0.35, 0.5, 0.35);
+    const lampMat = new THREE.MeshBasicMaterial({ color: 0xffaa33 });
+    const lamp = new THREE.Mesh(lampGeo, lampMat);
+    lamp.position.copy(pos);
+    parent.add(lamp);
+
+    const light = new THREE.PointLight(0xff9922, 1.6, 12, 1.2);
+    light.position.copy(pos);
+    parent.add(light);
+  }
+
+  private buildPodiumAndCup(colliders: Collider[]): void {
+    const podiumMat = new THREE.MeshStandardMaterial({
+      color: 0x68645e,
+      roughness: 0.8,
+      metalness: 0.1
+    });
+
+    const daisGroup = new THREE.Group();
+    daisGroup.position.copy(CUP_POS);
+
+    // Main raised dais platform
+    const platformGeo = new THREE.BoxGeometry(9.0, 1.4, 9.0);
+    const platform = new THREE.Mesh(platformGeo, podiumMat);
+    platform.position.set(0, -0.7, 0);
+    platform.receiveShadow = true;
+    platform.castShadow = true;
+    daisGroup.add(platform);
+
+    // Front Stairs leading up to dais
+    for (let step = 0; step < 5; step++) {
+      const stepGeo = new THREE.BoxGeometry(4.2, 0.28, 0.8);
+      const stepMesh = new THREE.Mesh(stepGeo, podiumMat);
+      stepMesh.position.set(0, -1.26 + step * 0.28, 4.5 + (4 - step) * 0.8);
+      stepMesh.receiveShadow = true;
+      daisGroup.add(stepMesh);
+    }
+
+    // 4 Corner Pillars with burning braziers
+    const cornerOffsets = [
+      [-3.8, -3.8],
+      [3.8, -3.8],
+      [-3.8, 3.8],
+      [3.8, 3.8]
+    ];
+
+    cornerOffsets.forEach(([cx, cz]) => {
+      const pillarGeo = new THREE.CylinderGeometry(0.5, 0.55, 2.4, 16);
+      const pillar = new THREE.Mesh(pillarGeo, podiumMat);
+      pillar.position.set(cx, 0.4, cz);
+      pillar.castShadow = true;
+      daisGroup.add(pillar);
+      colliders.push({ x: CUP_POS.x + cx, z: CUP_POS.z + cz, r: 0.6 });
+
+      // Fire Bowl Brazier
+      const bowlGeo = new THREE.CylinderGeometry(0.7, 0.35, 0.5, 16);
+      const bowlMat = new THREE.MeshStandardMaterial({ color: 0x332f2c, metalness: 0.4, roughness: 0.7 });
+      const bowl = new THREE.Mesh(bowlGeo, bowlMat);
+      bowl.position.set(cx, 1.7, cz);
+      daisGroup.add(bowl);
+
+      // Fire Flame Mesh
+      const flameGeo = new THREE.ConeGeometry(0.35, 0.8, 12);
+      const flameMat = new THREE.MeshBasicMaterial({ color: 0xff6600 });
+      const flame = new THREE.Mesh(flameGeo, flameMat);
+      flame.position.set(cx, 2.2, cz);
+      daisGroup.add(flame);
+
+      // Warm Torch Light
+      const torchLight = new THREE.PointLight(0xff7711, 2.0, 16, 1.2);
+      torchLight.position.set(cx, 2.3, cz);
+      daisGroup.add(torchLight);
+    });
+
+    // Central Plinth for Trophy
+    const plinthGeo = new THREE.CylinderGeometry(0.9, 1.1, 0.9, 24);
+    const plinth = new THREE.Mesh(plinthGeo, podiumMat);
+    plinth.position.set(0, 0.35, 0);
+    plinth.receiveShadow = true;
+    daisGroup.add(plinth);
+
+    // GOLDEN TROPHY CUP
+    this.trophyMesh = new THREE.Group();
+    const goldMat = new THREE.MeshStandardMaterial({
+      color: 0xffd700,
+      metalness: 0.95,
+      roughness: 0.15,
+      emissive: 0x3a2e00
+    });
+
+    // Trophy Base
+    const baseGeo = new THREE.CylinderGeometry(0.45, 0.6, 0.18, 24);
+    const baseMesh = new THREE.Mesh(baseGeo, goldMat);
+    baseMesh.position.set(0, 0.1, 0);
+    this.trophyMesh.add(baseMesh);
+
+    // Trophy Stem
+    const stemGeo = new THREE.CylinderGeometry(0.12, 0.18, 0.45, 16);
+    const stemMesh = new THREE.Mesh(stemGeo, goldMat);
+    stemMesh.position.set(0, 0.35, 0);
+    this.trophyMesh.add(stemMesh);
+
+    // Trophy Bowl
+    const cupBowlGeo = new THREE.CylinderGeometry(0.55, 0.22, 0.7, 24, 1, true);
+    const cupBowlMesh = new THREE.Mesh(cupBowlGeo, goldMat);
+    cupBowlMesh.position.set(0, 0.8, 0);
+    this.trophyMesh.add(cupBowlMesh);
+
+    // Trophy Handles (Left and Right Torus)
+    const handleGeo = new THREE.TorusGeometry(0.24, 0.05, 12, 24, Math.PI * 1.2);
+    const handleL = new THREE.Mesh(handleGeo, goldMat);
+    handleL.position.set(-0.52, 0.85, 0);
+    handleL.rotation.z = Math.PI * 0.4;
+    this.trophyMesh.add(handleL);
+
+    const handleR = new THREE.Mesh(handleGeo, goldMat);
+    handleR.position.set(0.52, 0.85, 0);
+    handleR.rotation.z = -Math.PI * 0.4;
+    this.trophyMesh.add(handleR);
+
+    // Glowing Golden Point Light (subtle local glow on the altar)
+    this.trophyLight = new THREE.PointLight(0xffd700, 2.2, 12, 1.2);
+    this.trophyLight.position.set(0, 1.2, 0);
+    this.trophyMesh.add(this.trophyLight);
+
+    this.trophyMesh.position.set(0, 0.8, 0);
+    daisGroup.add(this.trophyMesh);
+
+    this.group.add(daisGroup);
+  }
+}

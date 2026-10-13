@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Heightfield } from '../world/heightfield';
 import { Collider } from '../world/Trees';
+import { ArenaMap } from '../world/ArenaMap';
 
 const EYE_HEIGHT = 1.68;
 const WALK_SPEED = 4.0;
@@ -11,11 +12,12 @@ const JUMP_SPEED = 5.2;
 /**
  * Controlador en primera persona: pointer lock + WASD, gravedad,
  * colisión con el terreno (muestreo del heightfield) y con árboles/rocas,
- * sprint y head-bob sutil.
+ * restricción estricta a senderos de piedra, sprint y head-bob sutil.
  */
 export class FirstPersonController {
   readonly position: THREE.Vector3;
   enabled = false;
+  arenaMap: ArenaMap | null = null;
   /** Velocidad de caída con la que se tocó el suelo este frame (0 si no hubo aterrizaje). */
   landingSpeed = 0;
 
@@ -35,7 +37,7 @@ export class FirstPersonController {
   ) {
     this.position = spawn.clone();
     this.position.y = field.sampleHeight(spawn.x, spawn.z) + EYE_HEIGHT;
-    this.yaw = 0; // three: yaw 0 => cámara mira hacia -Z (ladera arriba)
+    this.yaw = 0; // three: yaw 0 => cámara mira hacia -Z
     this.pitch = 0.02;
 
     window.addEventListener('keydown', (e) => {
@@ -56,6 +58,21 @@ export class FirstPersonController {
 
   get isGrounded(): boolean {
     return this.grounded;
+  }
+
+  get rotationYaw(): number {
+    return this.yaw;
+  }
+
+  teleport(pos: THREE.Vector3, yaw = 0): void {
+    this.position.copy(pos);
+    const rawH = this.field.sampleHeight(pos.x, pos.z);
+    const surfaceH = this.arenaMap ? this.arenaMap.getWalkSurfaceHeight(pos.x, pos.z, rawH) : rawH;
+    this.position.y = surfaceH + EYE_HEIGHT;
+    this.velocity.set(0, 0, 0);
+    this.yaw = yaw;
+    this.pitch = 0.02;
+    this.syncCamera(0);
   }
 
   update(dt: number): void {
@@ -92,6 +109,11 @@ export class FirstPersonController {
     this.position.z += this.velocity.z * dt;
     this.position.y += this.velocity.y * dt;
 
+    // RESTRICCIÓN ESTRICTA AL SENDERO: Los jugadores solo se mueven en los caminos de piedra, NO en el pasto.
+    if (this.arenaMap) {
+      this.arenaMap.clampPlayerToPath(this.position, 0.35);
+    }
+
     // Colisión con árboles y rocas: empuje horizontal.
     for (const c of this.colliders) {
       const dx = this.position.x - c.x;
@@ -105,8 +127,11 @@ export class FirstPersonController {
       }
     }
 
-    // Colisión con el terreno.
-    const groundY = this.field.sampleHeight(this.position.x, this.position.z) + EYE_HEIGHT;
+    // Colisión con la superficie caminable (terreno o plataforma/escaleras de la arena).
+    const rawH = this.field.sampleHeight(this.position.x, this.position.z);
+    const surfaceH = this.arenaMap ? this.arenaMap.getWalkSurfaceHeight(this.position.x, this.position.z, rawH) : rawH;
+    const groundY = surfaceH + EYE_HEIGHT;
+
     if (this.position.y <= groundY) {
       if (!this.grounded && this.velocity.y < -3) this.landingSpeed = -this.velocity.y;
       this.position.y = groundY;
