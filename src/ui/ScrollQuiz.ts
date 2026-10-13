@@ -1,6 +1,9 @@
 /**
  * UI controller for the Ancient Parchment Scroll Rapid-Fire Quiz.
+<<<<<<< HEAD
  * Includes real-time webcam gesture pointer support (pointing index finger to select answers).
+=======
+>>>>>>> 4f6a39c1ad3cb03a28f935fc49405ac8999880bc
  */
 
 export interface Question {
@@ -74,6 +77,7 @@ export class ScrollQuizUI {
   private optionsEl!: HTMLElement;
   private feedbackEl!: HTMLElement;
 
+<<<<<<< HEAD
   // Gesture Cursor Elements
   private cursorEl!: HTMLElement;
   private cursorRingFill!: SVGCircleElement;
@@ -84,6 +88,8 @@ export class ScrollQuizUI {
   private isAnswerLocked = false;
   private lastPointerTime = 0;
 
+=======
+>>>>>>> 4f6a39c1ad3cb03a28f935fc49405ac8999880bc
   private currentQuestions: Question[] = [];
   private currentIndex = 0;
   private activeDoorId: number | null = null;
@@ -99,6 +105,10 @@ export class ScrollQuizUI {
   }
 
   private createDom(): void {
+<<<<<<< HEAD
+=======
+    // Style element
+>>>>>>> 4f6a39c1ad3cb03a28f935fc49405ac8999880bc
     const style = document.createElement('style');
     style.textContent = `
       #scroll-overlay {
@@ -118,7 +128,11 @@ export class ScrollQuizUI {
       }
       #parchment-scroll {
         position: relative;
+<<<<<<< HEAD
         width: min(530px, 92vw);
+=======
+        width: min(520px, 92vw);
+>>>>>>> 4f6a39c1ad3cb03a28f935fc49405ac8999880bc
         margin-top: 2rem;
         transform: translateY(-130%);
         transition: transform 0.65s cubic-bezier(0.18, 1.15, 0.32, 1);
@@ -157,7 +171,11 @@ export class ScrollQuizUI {
         border-left: 6px solid #cfb484;
         border-right: 6px solid #cfb484;
         box-shadow: inset 0 0 40px rgba(110, 68, 26, 0.3);
+<<<<<<< HEAD
         padding: 1.8rem 2.2rem 1.6rem;
+=======
+        padding: 1.8rem 2.2rem 2rem;
+>>>>>>> 4f6a39c1ad3cb03a28f935fc49405ac8999880bc
         color: #38240f;
         text-align: center;
       }
@@ -177,7 +195,11 @@ export class ScrollQuizUI {
         font-size: 1.55rem;
         font-weight: bold;
         letter-spacing: 0.08em;
+<<<<<<< HEAD
         color: #0e3a6c;
+=======
+        color: #2e1a06;
+>>>>>>> 4f6a39c1ad3cb03a28f935fc49405ac8999880bc
         text-shadow: 0 1px 1px rgba(255,255,255,0.4);
         margin-bottom: 0.8rem;
         border-bottom: 1px dashed rgba(80, 50, 20, 0.35);
@@ -201,17 +223,26 @@ export class ScrollQuizUI {
         margin-bottom: 0.8rem;
       }
       .scroll-btn {
+<<<<<<< HEAD
         padding: 0.85rem 1rem;
+=======
+        padding: 0.8rem 1rem;
+>>>>>>> 4f6a39c1ad3cb03a28f935fc49405ac8999880bc
         background: linear-gradient(180deg, #fbf2dc 0%, #e6cb9b 100%);
         border: 1.5px solid #a4763e;
         border-radius: 6px;
         color: #2d1806;
         font-family: inherit;
+<<<<<<< HEAD
         font-size: 0.95rem;
+=======
+        font-size: 0.92rem;
+>>>>>>> 4f6a39c1ad3cb03a28f935fc49405ac8999880bc
         font-weight: 600;
         cursor: pointer;
         box-shadow: 0 3px 5px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.6);
         transition: transform 0.15s, background 0.2s, border-color 0.2s, box-shadow 0.15s;
+<<<<<<< HEAD
         position: relative;
       }
       .scroll-btn:hover, .scroll-btn.gesture-hover {
@@ -220,6 +251,14 @@ export class ScrollQuizUI {
         transform: scale(1.04) translateY(-3px) !important;
         box-shadow: 0 8px 18px rgba(212, 160, 23, 0.45), 0 0 16px rgba(255, 215, 0, 0.6) !important;
         color: #1a0f00 !important;
+=======
+      }
+      .scroll-btn:hover {
+        background: linear-gradient(180deg, #ffffff 0%, #edd8b0 100%);
+        border-color: #6d4619;
+        transform: translateY(-2px);
+        box-shadow: 0 5px 8px rgba(0,0,0,0.25);
+>>>>>>> 4f6a39c1ad3cb03a28f935fc49405ac8999880bc
       }
       .scroll-btn:active {
         transform: translateY(1px);
@@ -244,6 +283,7 @@ export class ScrollQuizUI {
       .scroll-feedback.success {
         color: #1a6d14;
       }
+<<<<<<< HEAD
       #quiz-gesture-hint {
         margin-top: 0.5rem;
         font-size: 0.82rem;
@@ -255,6 +295,8 @@ export class ScrollQuizUI {
         border-radius: 4px;
         display: inline-block;
       }
+=======
+>>>>>>> 4f6a39c1ad3cb03a28f935fc49405ac8999880bc
       @keyframes scrollShake {
         0%, 100% { transform: translateX(0); }
         20%, 60% { transform: translateX(-8px); }
@@ -264,6 +306,7 @@ export class ScrollQuizUI {
         animation: scrollShake 0.4s ease;
       }
 
+<<<<<<< HEAD
       /* Glowing Gesture Finger Reticle Cursor */
       #quiz-gesture-cursor {
         position: fixed;
@@ -313,6 +356,8 @@ export class ScrollQuizUI {
         transition: stroke-dashoffset 0.04s linear;
       }
 
+=======
+>>>>>>> 4f6a39c1ad3cb03a28f935fc49405ac8999880bc
       /* Victory Banner */
       #victory-banner {
         position: fixed;
@@ -382,17 +427,25 @@ export class ScrollQuizUI {
         </div>
         <div class="scroll-body">
           <div class="scroll-badge" id="scroll-badge">Question 1 / 5</div>
+<<<<<<< HEAD
           <div class="scroll-title" id="scroll-title">DOOR 1: 5 RAPID FIRE QUESTIONS</div>
           <div class="scroll-question" id="scroll-question">Loading riddle...</div>
           <div class="scroll-options" id="scroll-options"></div>
           <div class="scroll-feedback" id="scroll-feedback"></div>
           <div id="quiz-gesture-hint">👉 Point your index finger at an answer to select it (or click)</div>
+=======
+          <div class="scroll-title" id="scroll-title">Door 1: Ancient Trial</div>
+          <div class="scroll-question" id="scroll-question">Loading riddle...</div>
+          <div class="scroll-options" id="scroll-options"></div>
+          <div class="scroll-feedback" id="scroll-feedback"></div>
+>>>>>>> 4f6a39c1ad3cb03a28f935fc49405ac8999880bc
         </div>
         <div class="scroll-roller bottom">
           <div class="scroll-knob"></div>
           <div class="scroll-knob"></div>
         </div>
       </div>
+<<<<<<< HEAD
       <div id="quiz-gesture-cursor">
         <div class="cursor-dot"></div>
         <svg class="cursor-ring" viewBox="0 0 44 44">
@@ -400,6 +453,8 @@ export class ScrollQuizUI {
           <circle class="ring-fill" id="quiz-ring-fill" cx="22" cy="22" r="18" />
         </svg>
       </div>
+=======
+>>>>>>> 4f6a39c1ad3cb03a28f935fc49405ac8999880bc
     `;
     document.body.appendChild(overlay);
 
@@ -420,14 +475,18 @@ export class ScrollQuizUI {
     this.questionEl = overlay.querySelector('#scroll-question')!;
     this.optionsEl = overlay.querySelector('#scroll-options')!;
     this.feedbackEl = overlay.querySelector('#scroll-feedback')!;
+<<<<<<< HEAD
     this.cursorEl = overlay.querySelector('#quiz-gesture-cursor')!;
     this.cursorRingFill = overlay.querySelector('#quiz-ring-fill')!;
+=======
+>>>>>>> 4f6a39c1ad3cb03a28f935fc49405ac8999880bc
 
     victory.querySelector('#victory-restart')!.addEventListener('click', () => {
       window.location.reload();
     });
   }
 
+<<<<<<< HEAD
   /**
    * Updates the gesture pointer location on screen and performs dwell selection on answer options.
    * targetX, targetY are screen coordinates in pixels.
@@ -541,6 +600,18 @@ export class ScrollQuizUI {
 
     this.titleEl.textContent = 'DOOR 1: 5 RAPID FIRE QUESTIONS';
     this.titleEl.style.color = '#0e3a6c';
+=======
+  showQuiz(doorId: number, onComplete: (doorId: number) => void): void {
+    if (this.isOpen) return;
+    this.activeDoorId = doorId;
+    this.onCompleteCallback = onComplete;
+    this.currentQuestions = doorId === 1 ? DOOR1_QUESTIONS : DOOR2_QUESTIONS;
+    this.currentIndex = 0;
+    this.isOpen = true;
+
+    this.titleEl.textContent = doorId === 1 ? 'DOOR 1: 5 RAPID FIRE QUESTIONS' : 'DOOR 2: 5 RAPID FIRE QUESTIONS';
+    this.titleEl.style.color = doorId === 1 ? '#0e3a6c' : '#7a1c1c';
+>>>>>>> 4f6a39c1ad3cb03a28f935fc49405ac8999880bc
     this.container.classList.add('active');
 
     this.renderCurrentQuestion();
@@ -553,7 +624,10 @@ export class ScrollQuizUI {
     this.feedbackEl.textContent = '';
     this.feedbackEl.className = 'scroll-feedback';
     this.optionsEl.innerHTML = '';
+<<<<<<< HEAD
     this.clearHover();
+=======
+>>>>>>> 4f6a39c1ad3cb03a28f935fc49405ac8999880bc
 
     q.options.forEach((opt, idx) => {
       const btn = document.createElement('button');
@@ -584,9 +658,15 @@ export class ScrollQuizUI {
         } else {
           // Completed all 5 questions!
           this.badgeEl.textContent = '5 / 5 COMPLETED!';
+<<<<<<< HEAD
           this.questionEl.textContent = 'All 5 questions answered! Door 1 is opening...';
           this.optionsEl.innerHTML = '';
           this.feedbackEl.textContent = '★ DOOR 1 UNLOCKED ★';
+=======
+          this.questionEl.textContent = 'All 5 questions answered! The gate is opening...';
+          this.optionsEl.innerHTML = '';
+          this.feedbackEl.textContent = '★ DOOR UNLOCKED ★';
+>>>>>>> 4f6a39c1ad3cb03a28f935fc49405ac8999880bc
           this.playFanfare();
 
           setTimeout(() => {
@@ -614,7 +694,10 @@ export class ScrollQuizUI {
   closeQuiz(): void {
     this.isOpen = false;
     this.container.classList.remove('active');
+<<<<<<< HEAD
     this.hideGesturePointer();
+=======
+>>>>>>> 4f6a39c1ad3cb03a28f935fc49405ac8999880bc
   }
 
   showVictory(): void {
@@ -637,16 +720,28 @@ export class ScrollQuizUI {
         gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
       } else {
         osc.frequency.setValueAtTime(220, now); // A3
+<<<<<<< HEAD
         osc.frequency.exponentialRampToValueAtTime(146.83, now + 0.25); // D3
         gain.gain.setValueAtTime(0.25, now);
         gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+=======
+        osc.frequency.setValueAtTime(164.81, now + 0.12); // E3
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+>>>>>>> 4f6a39c1ad3cb03a28f935fc49405ac8999880bc
       }
       osc.connect(gain);
       gain.connect(ctx.destination);
       osc.start(now);
+<<<<<<< HEAD
       osc.stop(now + 0.38);
     } catch {
       // Audio fallback silent
+=======
+      osc.stop(now + 0.4);
+    } catch {
+      // Audio fallback
+>>>>>>> 4f6a39c1ad3cb03a28f935fc49405ac8999880bc
     }
   }
 
@@ -658,8 +753,13 @@ export class ScrollQuizUI {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
         osc.type = 'triangle';
+<<<<<<< HEAD
         const start = ctx.currentTime + idx * 0.14;
         osc.frequency.setValueAtTime(freq, start);
+=======
+        osc.frequency.value = freq;
+        const start = ctx.currentTime + idx * 0.12;
+>>>>>>> 4f6a39c1ad3cb03a28f935fc49405ac8999880bc
         gain.gain.setValueAtTime(0.25, start);
         gain.gain.exponentialRampToValueAtTime(0.001, start + 0.4);
         osc.connect(gain);
@@ -668,13 +768,18 @@ export class ScrollQuizUI {
         osc.stop(start + 0.45);
       });
     } catch {
+<<<<<<< HEAD
       // Audio fallback silent
+=======
+      // Audio fallback
+>>>>>>> 4f6a39c1ad3cb03a28f935fc49405ac8999880bc
     }
   }
 
   private playVictoryTune(): void {
     try {
       const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+<<<<<<< HEAD
       const notes = [440, 554.37, 659.25, 880, 880, 880, 1108.73];
       notes.forEach((freq, idx) => {
         const osc = ctx.createOscillator();
@@ -691,6 +796,31 @@ export class ScrollQuizUI {
       });
     } catch {
       // Audio fallback silent
+=======
+      const chords = [
+        [523.25, 659.25, 783.99],
+        [587.33, 739.99, 880.0],
+        [659.25, 830.61, 987.77],
+        [1046.5, 1318.5, 1567.98]
+      ];
+      chords.forEach((chord, step) => {
+        const time = ctx.currentTime + step * 0.35;
+        chord.forEach((freq) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.value = freq;
+          gain.gain.setValueAtTime(0.2, time);
+          gain.gain.exponentialRampToValueAtTime(0.001, time + 0.6);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(time);
+          osc.stop(time + 0.65);
+        });
+      });
+    } catch {
+      // Audio fallback
+>>>>>>> 4f6a39c1ad3cb03a28f935fc49405ac8999880bc
     }
   }
 }

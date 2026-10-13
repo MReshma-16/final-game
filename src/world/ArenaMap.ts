@@ -41,10 +41,17 @@ export const ARENA_SEGMENTS: PathSegment[] = [
 
 export class ArenaMap {
   readonly group = new THREE.Group();
+<<<<<<< HEAD
   private door1LeftWing!: THREE.Group;
   private door1RightWing!: THREE.Group;
   private door2LeftWing!: THREE.Group;
   private door2RightWing!: THREE.Group;
+=======
+  private door1LeftWing!: THREE.Mesh;
+  private door1RightWing!: THREE.Mesh;
+  private door2LeftWing!: THREE.Mesh;
+  private door2RightWing!: THREE.Mesh;
+>>>>>>> 4f6a39c1ad3cb03a28f935fc49405ac8999880bc
 
   private trophyMesh!: THREE.Group;
   private trophyLight!: THREE.PointLight;
@@ -268,6 +275,7 @@ export class ArenaMap {
 
   private createGateStructure(
     pos: THREE.Vector3,
+<<<<<<< HEAD
     _bannerColor: number,
     _timberMat: THREE.Material,
     _woodMat: THREE.Material,
@@ -383,6 +391,94 @@ export class ArenaMap {
     this.group.add(gateGroup);
 
     return { left: leftHinge, right: rightHinge };
+=======
+    bannerColor: number,
+    timberMat: THREE.Material,
+    woodMat: THREE.Material,
+    colliders: Collider[]
+  ): { left: THREE.Mesh; right: THREE.Mesh } {
+    const gateGroup = new THREE.Group();
+    gateGroup.position.copy(pos);
+
+    // Left Timber Post
+    const pillarGeo = new THREE.CylinderGeometry(0.38, 0.44, 4.2, 16);
+    const leftPillar = new THREE.Mesh(pillarGeo, timberMat);
+    leftPillar.position.set(-1.8, 2.1, 0);
+    leftPillar.castShadow = true;
+    leftPillar.receiveShadow = true;
+    gateGroup.add(leftPillar);
+    colliders.push({ x: pos.x - 1.8, z: pos.z, r: 0.5 });
+
+    // Right Timber Post
+    const rightPillar = new THREE.Mesh(pillarGeo, timberMat);
+    rightPillar.position.set(1.8, 2.1, 0);
+    rightPillar.castShadow = true;
+    rightPillar.receiveShadow = true;
+    gateGroup.add(rightPillar);
+    colliders.push({ x: pos.x + 1.8, z: pos.z, r: 0.5 });
+
+    // Timber Top Crossbeam Lintel
+    const lintelGeo = new THREE.CylinderGeometry(0.32, 0.36, 4.4, 16);
+    lintelGeo.rotateZ(Math.PI / 2);
+    const lintel = new THREE.Mesh(lintelGeo, timberMat);
+    lintel.position.set(0, 4.1, 0);
+    lintel.castShadow = true;
+    gateGroup.add(lintel);
+
+    // Banner "5 RAPID FIRE QUESTIONS"
+    const bannerGeo = new THREE.PlaneGeometry(3.2, 0.9);
+    const bannerCanvas = document.createElement('canvas');
+    bannerCanvas.width = 512;
+    bannerCanvas.height = 144;
+    const ctx = bannerCanvas.getContext('2d')!;
+    ctx.fillStyle = bannerColor === 0x1f75fe ? '#103460' : '#601515';
+    ctx.fillRect(0, 0, 512, 144);
+    ctx.strokeStyle = '#ecd089';
+    ctx.lineWidth = 8;
+    ctx.strokeRect(6, 6, 500, 132);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 36px Georgia, serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('5 RAPID FIRE QUESTIONS', 256, 68);
+    ctx.font = 'italic 24px Georgia, serif';
+    ctx.fillStyle = '#ecd089';
+    ctx.fillText('SOLVE TO UNLOCK GATE', 256, 110);
+
+    const bannerTex = new THREE.CanvasTexture(bannerCanvas);
+    const bannerMat = new THREE.MeshBasicMaterial({ map: bannerTex });
+    const bannerMesh = new THREE.Mesh(bannerGeo, bannerMat);
+    bannerMesh.position.set(0, 3.3, 0.45);
+    gateGroup.add(bannerMesh);
+
+    // Lanterns on pillars
+    this.addLantern(gateGroup, new THREE.Vector3(-1.8, 2.6, 0.5));
+    this.addLantern(gateGroup, new THREE.Vector3(1.8, 2.6, 0.5));
+
+    // Wooden Doors (2 Wings)
+    const doorWingGeo = new THREE.BoxGeometry(1.35, 3.2, 0.16);
+    doorWingGeo.translate(0.675, 0, 0); // Pivot at hinge
+
+    const leftHinge = new THREE.Group();
+    leftHinge.position.set(-1.35, 1.6, 0);
+    const leftDoor = new THREE.Mesh(doorWingGeo, woodMat);
+    leftDoor.castShadow = true;
+    leftHinge.add(leftDoor);
+    gateGroup.add(leftHinge);
+
+    const rightHinge = new THREE.Group();
+    rightHinge.position.set(1.35, 1.6, 0);
+    doorWingGeo.clone(); // Re-use
+    const rightWingGeo = new THREE.BoxGeometry(1.35, 3.2, 0.16);
+    rightWingGeo.translate(-0.675, 0, 0); // Pivot at hinge
+    const rightDoor = new THREE.Mesh(rightWingGeo, woodMat);
+    rightDoor.castShadow = true;
+    rightHinge.add(rightDoor);
+    gateGroup.add(rightHinge);
+
+    this.group.add(gateGroup);
+
+    return { left: leftDoor, right: rightDoor };
+>>>>>>> 4f6a39c1ad3cb03a28f935fc49405ac8999880bc
   }
 
   private addLantern(parent: THREE.Group, pos: THREE.Vector3): void {

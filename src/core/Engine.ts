@@ -15,8 +15,11 @@ import { shared } from './uniforms';
 import { ArenaMap, DOOR1_POS, DOOR2_POS, CUP_POS, P1_SPAWN, P2_SPAWN } from '../world/ArenaMap';
 import { ScrollQuizUI } from '../ui/ScrollQuiz';
 import { Minimap } from '../ui/Minimap';
+<<<<<<< HEAD
 import { HandGestureController } from '../input/HandGestureController';
 import { SpeedBoostController } from '../ui/SpeedBoostController';
+=======
+>>>>>>> 4f6a39c1ad3cb03a28f935fc49405ac8999880bc
 
 type Progress = (fraction: number, label: string) => void;
 
@@ -51,8 +54,11 @@ export class Engine {
   private arenaMap!: ArenaMap;
   private scrollQuiz!: ScrollQuizUI;
   private minimap!: Minimap;
+<<<<<<< HEAD
   private handGesture?: HandGestureController;
   private speedBoost!: SpeedBoostController;
+=======
+>>>>>>> 4f6a39c1ad3cb03a28f935fc49405ac8999880bc
   selectedPlayer: 1 | 2 = 1;
   private readonly quality: QualityPreset;
 
@@ -124,6 +130,7 @@ export class Engine {
 
     progress(0.93, 'Afinando la luz…');
     await tick();
+<<<<<<< HEAD
     const spawnPos = P1_SPAWN;
     this.controller = new FirstPersonController(this.camera, this.field, colliders, spawnPos);
     this.controller.teleport(spawnPos, -Math.PI / 2);
@@ -135,6 +142,12 @@ export class Engine {
       this.scrollQuiz,
       this.speedBoost
     );
+=======
+    const spawnPos = this.selectedPlayer === 1 ? P1_SPAWN : P2_SPAWN;
+    this.controller = new FirstPersonController(this.camera, this.field, colliders, spawnPos);
+    this.controller.teleport(spawnPos, this.selectedPlayer === 1 ? -Math.PI / 2 : Math.PI / 2);
+    this.controller.arenaMap = this.arenaMap;
+>>>>>>> 4f6a39c1ad3cb03a28f935fc49405ac8999880bc
     this.audio = new AudioSystem(this.field, this.controller);
     this.composer = createComposer(this.renderer, this.scene, this.camera);
 
@@ -216,6 +229,40 @@ export class Engine {
         document.exitPointerLock?.();
         this.scrollQuiz.showVictory();
         this.audio.stopBgm();
+      }
+    }
+
+    // Detección de proximidad: Puerta 1
+    if (!this.arenaMap.isDoorUnlocked(1) && !this.scrollQuiz.isQuizActive) {
+      const d1 = p.distanceTo(DOOR1_POS);
+      if (d1 < 3.4 && Math.abs(p.x - DOOR1_POS.x) < 2.0 && p.z > DOOR1_POS.z) {
+        document.exitPointerLock?.();
+        this.scrollQuiz.showQuiz(1, (doorId) => {
+          this.arenaMap.unlockDoor(doorId);
+          this.renderer.domElement.requestPointerLock?.();
+        });
+      }
+    }
+
+    // Detección de proximidad: Puerta 2
+    if (!this.arenaMap.isDoorUnlocked(2) && !this.scrollQuiz.isQuizActive) {
+      const d2 = p.distanceTo(DOOR2_POS);
+      if (d2 < 3.4 && Math.abs(p.x - DOOR2_POS.x) < 2.0 && p.z > DOOR2_POS.z) {
+        document.exitPointerLock?.();
+        this.scrollQuiz.showQuiz(2, (doorId) => {
+          this.arenaMap.unlockDoor(doorId);
+          this.renderer.domElement.requestPointerLock?.();
+        });
+      }
+    }
+
+    // Detección de proximidad: Copa Final (Destino)
+    if (!this.arenaMap.isVictory) {
+      const dCup = p.distanceTo(CUP_POS);
+      if (dCup < 2.8) {
+        this.arenaMap.claimCup();
+        document.exitPointerLock?.();
+        this.scrollQuiz.showVictory();
       }
     }
 

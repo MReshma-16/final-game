@@ -18,11 +18,27 @@ async function boot(): Promise<void> {
   loadText.textContent = 'Listo para jugar';
 
   const btnP1 = document.getElementById('btn-p1');
+<<<<<<< HEAD
   btnP1?.addEventListener('click', () => {
     btnP1.classList.add('active');
     engine.setPlayer(1);
   });
   engine.setPlayer(1);
+=======
+  const btnP2 = document.getElementById('btn-p2');
+
+  btnP1?.addEventListener('click', () => {
+    btnP1.classList.add('active');
+    btnP2?.classList.remove('active');
+    engine.setPlayer(1);
+  });
+
+  btnP2?.addEventListener('click', () => {
+    btnP2.classList.add('active');
+    btnP1?.classList.remove('active');
+    engine.setPlayer(2);
+  });
+>>>>>>> 4f6a39c1ad3cb03a28f935fc49405ac8999880bc
 
   const canvas = engine.renderer.domElement;
 

@@ -89,6 +89,7 @@ export class FirstPersonController {
     this.syncCamera(0);
   }
 
+<<<<<<< HEAD
   // Hand Gesture Inputs
   gestureForward = false;
   gestureTurnLeft = false;
@@ -110,6 +111,8 @@ export class FirstPersonController {
     this.gestureTurnRight = false;
   }
 
+=======
+>>>>>>> 4f6a39c1ad3cb03a28f935fc49405ac8999880bc
   update(dt: number): void {
     this.landingSpeed = 0;
 
